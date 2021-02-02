@@ -462,7 +462,7 @@ def channel_wise_fc_layer(x):
 #     The non-linear activation used in Capsule. It drives the length of a large vector to near 1 and small vector to 0
 #     :param vectors: some vectors to be squashed, N-dim tensor
 #     :param axis: the axis to squash
-#     :return: a Tensor with same shape as input vectors
+#     :return: a Tensor with same shape as x vectors
 #     """
 #     s_squared_norm = sum(square(vectors), axis, keepdims=True)
 #     scale = s_squared_norm / (1 + s_squared_norm) / sqrt(s_squared_norm + epsilon())
@@ -585,7 +585,7 @@ def squash(vectors, axis=-1):
     The non-linear activation used in Capsule. It drives the length of a large vector to near 1 and small vector to 0
     :param vectors: some vectors to be squashed, N-dim tensor
     :param axis: the axis to squash
-    :return: a Tensor with same shape as input vectors
+    :return: a Tensor with same shape as x vectors
     """
     s_squared_norm = sum(square(vectors), axis, keepdims=True)
     scale = s_squared_norm / (1 + s_squared_norm) / sqrt(s_squared_norm + epsilon())

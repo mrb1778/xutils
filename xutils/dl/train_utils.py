@@ -133,27 +133,46 @@ def select_top_features(x_train, y_train, x_test, x_validation, data_columns, nu
     return x_train, x_test, x_validation
 
 
-class DataSet:
-    def __init__(self, x=None, y=None, data_columns=None) -> None:
+class DataManager:
+    def __init__(self,
+                 x=None, y=None,
+                 test=None, validation=None,
+                 labels=None, label_encoder=None,
+                 data_columns=None,
+                 data_loader=None, data_enricher=None) -> None:
         super().__init__()
         self.x = x
         self.y = y
         self.data_columns = data_columns
 
-        self.test = None
-        self.validation = None
-        self.labels = None
-        self.label_encoder = None
+        self.test = test
+        self.validation = validation
+        self.labels = labels
+        self.label_encoder = label_encoder
+        self.data_loader = data_loader
+        self.data_enricher = data_enricher
+
+    def load_data(self, *args, **kwargs):
+        if self.data_loader is not None:
+            self.data_loader(*args, **kwargs)
+        else:
+            raise Exception("Data loader not set")
+
+    def enrich_data(self, *args, **kwargs):
+        if self.data_enricher is not None:
+            self.data_enricher(*args, **kwargs)
+        else:
+            raise Exception("Data loader not set")
 
     def split_train(self, split=0.8):
-        self.test = DataSet()
+        self.test = DataManager()
         return self._split(self.test, split)
 
     def split_validation(self, train_split=0.8):
         if self.test is None:
             raise Exception("Must Split Train 1st")
 
-        self.validation = DataSet()
+        self.validation = DataManager()
         return self._split(self.validation, train_split)
 
     def _split(self, data_set, split=0.8):

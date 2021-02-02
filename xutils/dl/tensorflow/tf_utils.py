@@ -25,10 +25,10 @@ def set_random_seed(seed=1235):
 def create_image_generator(preprocessing_function=None):
     # This will do preprocessing and realtime data augmentation:
     # datagen = ImageDataGenerator(
-    #     featurewise_center=False,  # set input mean to 0 over the dataset
+    #     featurewise_center=False,  # set x mean to 0 over the dataset
     #     samplewise_center=False,  # set each sample mean to 0
     #     featurewise_std_normalization=False,  # divide inputs by std of the dataset
-    #     samplewise_std_normalization=False,  # divide each input by its std
+    #     samplewise_std_normalization=False,  # divide each x by its std
     #     zca_whitening=False,  # apply ZCA whitening
     #     zca_epsilon=1e-06,  # epsilon for ZCA whitening
     #     rotation_range=0,  # randomly rotate images in the range (degrees, 0 to 180)
@@ -39,24 +39,24 @@ def create_image_generator(preprocessing_function=None):
     #     shear_range=0.,  # set range for random shear
     #     zoom_range=0.,  # set range for random zoom
     #     channel_shift_range=0.,  # set range for random channel shifts
-    #     # set mode for filling points outside the input boundaries
+    #     # set mode for filling points outside the x boundaries
     #     fill_mode='nearest',
     #     cval=0.,  # value used for fill_mode = "constant"
     #     horizontal_flip=True,  # randomly flip images
     #     vertical_flip=False,  # randomly flip images
     #     # set rescaling factor (applied before any other transformation)
     #     rescale=None,
-    #     # set function that will be applied on each input
+    #     # set function that will be applied on each x
     #     preprocessing_function=None,
     #     # image data format, either "channels_first" or "channels_last"
     #     data_format=None,
     #     # fraction of images reserved for validation (strictly between 0 and 1)
     #     validation_split=0.0)
     # datagen = ImageDataGenerator(
-    #     featurewise_center=False,  # set input mean to 0 over the dataset
+    #     featurewise_center=False,  # set x mean to 0 over the dataset
     #     samplewise_center=False,  # set each sample mean to 0
     #     featurewise_std_normalization=False,  # divide inputs by std of the dataset
-    #     samplewise_std_normalization=False,  # divide each input by its std
+    #     samplewise_std_normalization=False,  # divide each x by its std
     #     zca_whitening=False,  # apply ZCA whitening
     #     rotation_range=15,  # randomly rotate images in the range (degrees, 0 to 180)
     #     width_shift_range=0.1,  # randomly shift images horizontally (fraction of total width)
@@ -117,7 +117,7 @@ def create_image_generator_flow(
 #
 #     def preprocess_fn(image, label):
 #         """A transformation function to preprocess raw data
-#         into trainable input. """
+#         into trainable x. """
 #         x = tf.reshape(tf.cast(image, tf.float32), input_shape)
 #         x = tf.image.random_flip_left_right(image)
 #
@@ -1060,7 +1060,7 @@ def conv2d(x, W, b, strides=1, activation_fn=tf.nn.elu):
 
 
 def layer_pool(features, pooling='max', k=2):
-    """creates more / smaller versions of input.  max pooling: classification. loses information about original input area.
+    """creates more / smaller versions of x.  max pooling: classification. loses information about original x area.
     average pooling does not"""
 
     if pooling == 'avg':
@@ -1070,7 +1070,7 @@ def layer_pool(features, pooling='max', k=2):
 
 
 def conv_net(x, weights, biases, dropout, activation_fn=tf.nn.elu):
-    # Reshape input picture
+    # Reshape x picture
     x = tf.reshape(x, shape=[-1, 28, 28, 1])
 
     # Convolution Layer
@@ -1084,7 +1084,7 @@ def conv_net(x, weights, biases, dropout, activation_fn=tf.nn.elu):
     conv2 = layer_pool(conv2)
 
     # Fully connected layer
-    # Reshape conv2 output to fit fully connected layer input
+    # Reshape conv2 output to fit fully connected layer x
     fc1 = tf.reshape(conv2, [-1, weights['wd1'].get_shape().as_list()[0]])
     fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
     fc1 = activation_fn(fc1)
@@ -1103,7 +1103,7 @@ def conv_net(x, weights, biases, dropout, activation_fn=tf.nn.elu):
 #         n_hidden=128  # hidden layer num of features
 #         ):
 #     # Prepare data shape to match `rnn` function requirements
-#     # Current data input shape: (batch_size, n_steps, n_input)
+#     # Current data x shape: (batch_size, n_steps, n_input)
 #     # Required shape: 'n_steps' tensors list of shape (batch_size, n_input)
 #
 #     # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
@@ -1302,12 +1302,16 @@ def test_install():
     print("hello, {}".format(m))
 
 
+class KerasTrainer(tu.Trainer):
+    def __init__(self):
+        pass
+
 # https://gist.github.com/datlife/abfe263803691a8864b7a2d4f87c4ab8
 # def tfdata_generator(images, labels, is_training, num_classes, batch_size=128):
 #     """Construct a data generator using `tf.Dataset`. """
 #
 #     def map_fn(image, label):
-#         """Preprocess raw data to trainable input. """
+#         """Preprocess raw data to trainable x. """
 #         x = tf.reshape(tf.cast(image, tf.float32), (28, 28, 1))
 #         y = tf.one_hot(tf.cast(label, tf.uint8), num_classes)
 #         return x, y

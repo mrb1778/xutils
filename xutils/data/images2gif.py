@@ -246,7 +246,7 @@ class GifWriter:
 
         bb = '\x21\xF9\x04'
         bb += chr((dispose & 3) << 2)  # low bit 1 == transparency,
-        # 2nd bit 1 == user input , next 3 bits, the low two of which are used,
+        # 2nd bit 1 == user x , next 3 bits, the low two of which are used,
         # are dispose.
         bb += intToBin( int(duration*100) ) # in 100th of seconds
         bb += '\x00'  # no transparant color

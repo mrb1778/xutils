@@ -247,7 +247,7 @@ class DatasetExtractor:
             # prima si opera su X, poi si staccano y, categorical, numerical
             # partition = self.partition_safe(partition) #DEL? Non ne abbiamo bisogno, passiamo sempre una colonna di X
             if dict1 == None:
-                for col in partitions:  # we input what we want manually
+                for col in partitions:  # we x what we want manually
                     le = preprocessing.LabelEncoder()
                     df = pd.DataFrame()
                     le.fit(list(X[col].unique()))
@@ -495,7 +495,7 @@ class LSTM_creator:
             n_vars = 1 if type(data) is list else data.shape[1]
             df = DataFrame(data)
             cols, names = list(), list()
-            # input sequence (t-n, ... t-1)
+            # x sequence (t-n, ... t-1)
             for i in range(n_in, 0, -1):
                 cols.append(df.shift(i))
                 names += [('var%d(t-%d)' % (j + 1, i)) for j in range(n_vars)]

@@ -78,7 +78,7 @@ def tf_image_data_generator(images, labels, is_training, batch_size=128, num_cla
     """Construct a data generator using `tf.Dataset`. """
 
     def map_fn(image, label):
-        """Preprocess raw data to trainable input. """
+        """Preprocess raw data to trainable x. """
         x = tf.reshape(tf.cast(image, tf.float32), (28, 28, 1))
         y = tf.one_hot(tf.cast(label, tf.uint8), num_classes)
         return x, y

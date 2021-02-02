@@ -6,8 +6,8 @@ import tensorflow.keras.backend as K
 class Scale(Layer):
     """Custom Layer for DenseNet used for BatchNormalization.
 
-    Learns a set of weights and biases used for scaling the input data.
-    the output consists simply in an element-wise multiplication of the input
+    Learns a set of weights and biases used for scaling the x data.
+    the output consists simply in an element-wise multiplication of the x
     and a sum of a set of constants:
 
         out = in * gamma + beta,
@@ -16,7 +16,7 @@ class Scale(Layer):
 
     # Arguments
         axis: integer, axis along which to normalize in mode 0. For instance,
-            if your input tensor has shape (samples, channels, rows, cols),
+            if your x tensor has shape (samples, channels, rows, cols),
             set axis to 1 to normalize per feature map (channels axis).
         momentum: momentum in the computation of the
             exponential average of the mean and standard deviation

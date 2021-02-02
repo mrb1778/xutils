@@ -17,7 +17,7 @@ from PIL import Image
 from tqdm import tqdm
 
 
-def load(name='input', directory='input', extension='jpg'):
+def load(name='x', directory='x', extension='jpg'):
     path = os.path.join(directory, name + "." + extension)
     # return np.float32(Image.open(path))
     img = scipy.misc.imread(path).astype(np.float)
@@ -266,7 +266,7 @@ def create_hed_network(prototxt_path, caffemodel_path):
             self.y_start = 0
             self.y_end = 0
 
-        # Our layer receives two inputs. We need to crop the first input blob
+        # Our layer receives two inputs. We need to crop the first x blob
         # to match a shape of the second one (keeping batch size and number of channels)
         def getMemoryShapes(self, inputs):
             input_shape, target_shape = inputs[0], inputs[1]
@@ -453,7 +453,7 @@ def save_array_as_images(x, img_width, img_height, path, file_names):
     return x_temp
 
 
-def reshape_as_image(x, img_width, img_height):
+def reshape_as_images(x, img_height, img_width):
     x_temp = np.zeros((len(x), img_height, img_width))
     for i in range(x.shape[0]):
         x_temp[i] = np.reshape(x[i], (img_height, img_width))

@@ -69,3 +69,18 @@ def create_file_if(path, create_fn, update=False):
 
 def create_parent_dirs(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+
+def get_difference(file1, file2, print_results=True):
+    check = {}
+    for file in [file1, file2]:
+        with open(file, 'r') as f:
+            check[file] = []
+            for line in f:
+                check[file].append(line)
+    diff = set(check[file1]) - set(check[file2])
+    if print_results:
+        for line in diff:
+            print(line.rstrip())
+
+    return diff
