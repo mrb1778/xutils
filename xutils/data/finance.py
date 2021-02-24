@@ -10,18 +10,20 @@ import plotly.graph_objects as go
 
 import xutils.core.net_utils as nu
 import xutils.data.pandas_utils as pu
+import xutils.core.file_utils as fu
 
 
-def download_stock_date_from_alphavantage(data_path, ticker, api_key, update=False):
+def download_stock_date_from_alphavantage(path, ticker, api_key, update=False):
     return nu.download_if(
-        data_path,
+        path,
         "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&outputsize=full&apikey=" +
         api_key +
         "&datatype=csv&symbol=" + ticker,
         update=update)
 
 
-def get_stock_data(ticker, start=None, end=None, source='yahoo', api_key=None, normalize_columns=True):
+def get_stock_data(ticker, download_path=None, start=None, end=None, source='yahoo', api_key=None, normalize_columns=True):
+    
     df = web.DataReader(ticker, data_source=source, start=start, end=end, api_key=api_key)
     if normalize_columns:
         pu.lower_case_columns(df)
