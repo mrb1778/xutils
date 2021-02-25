@@ -22,13 +22,13 @@ def download_stock_date_from_alphavantage(path, ticker, api_key, update=False):
         update=update)
 
 
-def get_stock_data(ticker, download_path=None, start=None, end=None, source='yahoo', api_key=None, normalize_columns=True):
-    
+def get_stock_data(ticker, download_path=None, start=None, end=None, source='yahoo', api_key=None,
+                   normalize_columns=True):
     df = web.DataReader(ticker, data_source=source, start=start, end=end, api_key=api_key)
     if normalize_columns:
         pu.lower_case_columns(df)
     return df
-    
+
 
 # def save_stock_data(ticker, start_date, end_date, file_name="prices.csv", field="Adj Close"):
 #     """
@@ -86,7 +86,7 @@ def get_stock_data(ticker, download_path=None, start=None, end=None, source='yah
 #         total_error = np.array(errors)
 #         # If you want to see the full error list then print the following statement
 
-############### Technical indicators ########################
+# Technical indicators
 
 
 # not used
@@ -118,7 +118,6 @@ def add_rsi_smooth(df, intervals, col_name="close"):
     https://school.stockcharts.com/doku.php?id=technical_indicators:relative_strength_index_rsi
     Verified!
     """
-    prev_rsi = np.inf
     prev_avg_gain = np.inf
     prev_avg_loss = np.inf
     rolling_count = 0
@@ -137,7 +136,6 @@ def add_rsi_smooth(df, intervals, col_name="close"):
         curr_losses = np.abs(series.where(series < 0, 0))
         avg_gain = curr_gains.sum() / period  # * 100
         avg_loss = curr_losses.sum() / period  # * 100
-        rsi = -1
 
         if rolling_count == 0:
             # first RSI calculation
@@ -177,7 +175,7 @@ def add_williamr(df, intervals):
     """
     # df_ss = sdf.retype(df)
     for i in intervals:
-        df["wr_" + str(i)] = momentum.wr(df['high'], df['low'], df['close'], i, fillna=True)
+        df["wr_" + str(i)] = momentum.williams_r(df['high'], df['low'], df['close'], i, fillna=True)
 
 
 def add_mfi(df, intervals):
@@ -185,7 +183,8 @@ def add_mfi(df, intervals):
     momentum type indicator
     """
     for i in intervals:
-        df['mfi_' + str(i)] = volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], n=i, fillna=True)
+        df['mfi_' + str(i)] = volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=i,
+                                                      fillna=True)
 
 
 def add_sma(df, intervals, col_name="close"):
@@ -213,6 +212,7 @@ def add_wma(df, intervals, col_name="close", hma_step=0):
     """
     Momentum indicator
     """
+
     def wavg(rolling_prices, period):
         weights = pd.Series(range(1, period + 1))
         return np.multiply(rolling_prices.values, weights.values).sum() / weights.sum()
@@ -275,7 +275,7 @@ def add_trix(df, intervals, col_name="close"):
     Momentum indicator
     Need validation!
     """
-    df_ss = sdf.retype(df)
+    sdf.retype(df)
     for i in intervals:
         # df['trix_'+str(i)] = df_ss['trix_'+str(i)+'_sma']
         df['trix_' + str(i)] = trend.trix(df[col_name], i, fillna=True)
@@ -311,9 +311,9 @@ def add_bb_mav(df, intervals, col_name="close"):
     """
     volitility indicator
     """
-    df_ss = sdf.retype(df)
+    sdf.retype(df)
     for i in intervals:
-        df['bb_' + str(i)] = volatility.bollinger_mavg(df[col_name], n=i, fillna=True)
+        df['bb_' + str(i)] = volatility.bollinger_mavg(df[col_name], window=i, fillna=True)
 
 
 def add_cmo(df, intervals, col_name="close"):
@@ -392,13 +392,14 @@ def add_roc(df, intervals, col_name="close"):
             intervals -> list of periods for which to calculated
     return: None (adds the result in a column)
     """
+
     def calculate_roc(series, period):
         return ((series.iloc[-1] - series.iloc[0]) / series.iloc[0]) * 100
 
     for period in intervals:
         df['roc_' + str(period)] = np.nan
         # for 12 day period, 13th day price - 1st day price
-        res = df['close'].rolling(period + 1).apply(calculate_roc, args=(period,), raw=False)
+        res = df[col_name].rolling(period + 1).apply(calculate_roc, args=(period,), raw=False)
         df['roc_' + str(period)] = res
 
 
@@ -407,7 +408,7 @@ def add_dpo(df, intervals, col_name="close"):
     Trend Oscillator type indicator
     """
     for i in intervals:
-        df['dpo_' + str(i)] = trend.dpo(df[col_name], n=i)
+        df['dpo_' + str(i)] = trend.dpo(df[col_name], window=i)
 
 
 def add_kst(df, intervals, col_name="close"):
@@ -424,7 +425,8 @@ def add_cmf(df, intervals):
     No other implementation found
     """
     for i in intervals:
-        df['cmf_' + str(i)] = volume.chaikin_money_flow(df['high'], df['low'], df['close'], df['volume'], i, fillna=True)
+        df['cmf_' + str(i)] = volume.chaikin_money_flow(df['high'], df['low'], df['close'], df['volume'], i,
+                                                        fillna=True)
 
 
 def add_force_index(df, intervals):
@@ -438,7 +440,7 @@ def add_eom(df, intervals):
     Ease of Movement : https://www.investopedia.com/terms/e/easeofmovement.asp
     """
     for i in intervals:
-        df['eom_' + str(i)] = volume.ease_of_movement(df['high'], df['low'], df['volume'], n=i, fillna=True)
+        df['eom_' + str(i)] = volume.ease_of_movement(df['high'], df['low'], df['volume'], window=i, fillna=True)
 
 
 # not used. +1
@@ -529,7 +531,7 @@ def add_short_long_ma_crossover(df, short, long, col_name="close"):
         else:
             return 2
 
-    add_sma(df, col_name, [short, long])
+    add_sma(df, [short, long], col_name)
     labels = np.zeros((len(df)))
     labels[:] = np.nan
     diff = df[col_name + '_sma_' + str(short)] - df[col_name + '_sma_' + str(long)]
