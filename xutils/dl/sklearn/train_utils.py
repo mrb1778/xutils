@@ -113,6 +113,9 @@ def select_top_features(x_train, y_train, x_test, x_validation, data_columns, nu
 
     select_k_best = SelectKBest(f_classif, k=num_top_features)
     select_k_best.fit(x_train_copy, y_train)
+    print('########')
+    print(select_k_best.get_support(indices=True))
+    print('########')
     selected_features_anova = itemgetter(*select_k_best.get_support(indices=True))(data_columns)
 
     select_k_best = SelectKBest(mutual_info_classif, k=num_top_features)
