@@ -453,7 +453,7 @@ def save_array_as_images(x, img_width, img_height, path, file_names):
     return x_temp
 
 
-def reshape_as_images(x, img_height, img_width):
+def reshape_as_images(x, img_height, img_width=-1):
     x_temp = np.zeros((len(x), img_height, img_width))
     for i in range(x.shape[0]):
         x_temp[i] = np.reshape(x[i], (img_height, img_width))
