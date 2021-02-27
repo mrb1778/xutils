@@ -7,10 +7,20 @@ def get_device():
     return "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
-def net_summary(net) -> str:
+def model_summary(model, count_params=True) -> str:
     print_buffer = io.StringIO()
-    print(net, file=print_buffer)
-    return print_buffer.getvalue()
+    print(model, file=print_buffer)
+
+    value = print_buffer.getvalue()
+    return F'{value}\nParameters: {count_parameters(model)}' if count_params else value
+
+
+def print_model_summary(model, count_params=True):
+    print(model_summary(model, count_params))
+
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 class TransferLearnModel(nn.Module):
