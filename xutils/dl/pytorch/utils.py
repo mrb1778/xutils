@@ -3,8 +3,16 @@ import torch
 from torch import nn as nn
 
 
+def has_gpu():
+    return torch.cuda.is_available()
+
+
 def get_device():
-    return "cuda:0" if torch.cuda.is_available() else "cpu"
+    return "cuda:0" if has_gpu() else "cpu"
+
+
+def num_gpus():
+    return torch.cuda.device_count()
 
 
 def model_summary(model, count_params=True) -> str:
