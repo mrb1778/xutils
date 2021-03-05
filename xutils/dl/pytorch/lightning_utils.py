@@ -7,10 +7,13 @@ import torch.nn.functional as F
 
 
 class WrapperModule(LightningModule):
-    def __init__(self, wrapped):
+    def __init__(self, wrapped, learning_rate):
         super(WrapperModule, self).__init__()
+        self.save_hyperparameters()
         self.model = wrapped
         self.model.to(self.device)
+
+        self.learning_rate = learning_rate
 
     def forward(self, x):
         return self.model(x)
