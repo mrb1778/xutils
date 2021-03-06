@@ -42,7 +42,6 @@ class WrapperModule(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        print('line46', batch)
         x, y = batch
         y_hat = self.model(x)
         loss = self.calculate_loss(y_hat, y)
@@ -63,7 +62,6 @@ class NumpyXYDataset(Dataset):
         return len(self.x)
 
     def __getitem__(self, idx):
-        print("line66", torch.from_numpy(self.x[idx]).float(), torch.from_numpy(self.y[idx]).float())
         return torch.from_numpy(self.x[idx]).float(), torch.from_numpy(self.y[idx]).float()
 
 
