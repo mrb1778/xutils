@@ -3,17 +3,32 @@ from typing import Any
 from pytorch_lightning import LightningModule, LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+
+from xutils.core.python_utils import getattr_ignore_case
 
 
 class WrapperModule(LightningModule):
-    def __init__(self, wrapped, learning_rate):
+    def __init__(self, wrapped, learning_rate, loss_fn=None):
         super(WrapperModule, self).__init__()
         self.save_hyperparameters()
         self.model = wrapped
         self.model.to(self.device)
 
         self.learning_rate = learning_rate
+
+        if loss_fn is None:
+            # todo: auto choose based on type flag
+            self.loss_fn = F.cross_entropy
+        elif loss_fn == "categorical_cross_entropy":
+            # loss_tracker = nn.NLLLoss()
+            # self.loss_fn = lambda y_hat, y: loss_tracker(torch.log(y_hat), y)
+            self.loss_fn = lambda y_hat, y: (-(y_hat+1e-5).log() * y).sum(dim=1).mean()
+        elif isinstance(loss_fn, str):
+            self.loss_fn = getattr_ignore_case(F, loss_fn)
+        else:
+            self.loss_fn = loss_fn
 
     def forward(self, x):
         return self.model(x)
@@ -24,16 +39,19 @@ class WrapperModule(LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.model(x)
-        loss = F.cross_entropy(y_hat, y)
+        loss = self.calculate_loss(y_hat, y)
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.model(x)
-        loss = F.cross_entropy(y_hat, y)
+        loss = self.calculate_loss(y_hat, y)
         metrics = {'val_loss': loss}
         self.log_dict(metrics)
         return metrics
+
+    def calculate_loss(self, y_hat, y):
+        return self.loss_fn(y_hat, y)
 
 
 class NumpyXYDataset(Dataset):
@@ -78,17 +96,20 @@ class DatasetDataModule(LightningDataModule):
     def train_dataloader(self):
         return DataLoader(self.train_dataset,
                           batch_size=self.batch_size,
-                          num_workers=self.num_workers)
+                          num_workers=self.num_workers,
+                          shuffle=True)
 
     def val_dataloader(self):
         return DataLoader(self.val_dataset,
                           batch_size=self.batch_size,
-                          num_workers=self.num_workers)
+                          num_workers=self.num_workers,
+                          shuffle=False)
 
     def test_dataloader(self):
         return DataLoader(self.test_dataset,
                           batch_size=self.batch_size,
-                          num_workers=self.num_workers)
+                          num_workers=self.num_workers,
+                          shuffle=False)
 
 
 # PANDAS --------------------------------------
