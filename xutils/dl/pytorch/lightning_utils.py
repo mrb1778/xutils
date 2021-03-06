@@ -43,6 +43,7 @@ class WrapperModule(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        print('line46', batch)
         x, y = batch
         y_hat = self.model(x)
         loss = self.calculate_loss(y_hat, y)
