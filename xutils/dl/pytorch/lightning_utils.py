@@ -3,7 +3,6 @@ from typing import Any
 from pytorch_lightning import LightningModule, LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 from xutils.core.python_utils import getattr_ignore_case
@@ -86,14 +85,14 @@ class DatasetDataModule(LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
 
-    def transfer_batch_to_device(self, batch: Any, device: torch.device) -> Any:
-        pass
+    # def transfer_batch_to_device(self, batch: Any, device: torch.device) -> Any:
+    #     pass
 
-    def prepare_data(self):
-        pass
-
-    def setup(self, stage=None):
-        pass
+    # def prepare_data(self):
+    #     pass
+    #
+    # def setup(self, stage=None):
+    #     pass
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset,
