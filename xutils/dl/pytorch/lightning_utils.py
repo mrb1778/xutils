@@ -64,7 +64,7 @@ class NumpyXYDataset(Dataset):
         return len(self.x)
 
     def __getitem__(self, idx):
-        print("line66", self.x[idx], self.y[idx])
+        print("line66", torch.from_numpy(self.x[idx]).float(), torch.from_numpy(self.y[idx]).float())
         return torch.from_numpy(self.x[idx]).float(), torch.from_numpy(self.y[idx]).float()
 
 
