@@ -11,7 +11,7 @@ from xutils.core.python_utils import getattr_ignore_case
 class WrapperModule(LightningModule):
     def __init__(self, wrapped, learning_rate, loss_fn=None):
         super(WrapperModule, self).__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters('learning_rate', 'loss_fn')
         self.model = wrapped
         self.model.to(self.device)
 
