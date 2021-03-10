@@ -1,5 +1,3 @@
-from typing import Any
-
 from pytorch_lightning import LightningModule, LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 import torch
@@ -11,11 +9,11 @@ from xutils.core.python_utils import getattr_ignore_case
 class WrapperModule(LightningModule):
     def __init__(self, wrapped, learning_rate, loss_fn=None):
         super(WrapperModule, self).__init__()
-        self.save_hyperparameters('learning_rate', 'loss_fn')
         self.model = wrapped
         self.model.to(self.device)
 
         self.learning_rate = learning_rate
+        self.save_hyperparameters('learning_rate')  # , 'loss_fn')
 
         if loss_fn is None:
             # todo: auto choose based on type flag
