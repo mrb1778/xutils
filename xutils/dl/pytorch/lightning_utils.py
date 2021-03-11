@@ -13,7 +13,7 @@ class WrapperModule(LightningModule):
         self.model.to(self.device)
 
         self.learning_rate = learning_rate
-        self.save_hyperparameters('learning_rate')  # , 'loss_fn')
+        self.save_hyperparameters('learning_rate', 'loss_fn')
 
         if loss_fn is None:
             # todo: auto choose based on type flag
