@@ -108,15 +108,15 @@ def scale_split_data(data):
     data.test.x = mm_scaler.transform(data.test.x)
 
 
-def select_top_features(x_train, y_train, x_test, x_validation, data_columns, num_top_features):
-    x_train_copy = x_train.copy()
+def select_top_features(x, y, data_columns, num_top_features):
+    x_train_copy = x.copy()
 
     select_k_best = SelectKBest(f_classif, k=num_top_features)
-    select_k_best.fit(x_train_copy, y_train)
+    select_k_best.fit(x_train_copy, y)
     selected_features_anova = itemgetter(*select_k_best.get_support(indices=True))(data_columns)
 
     select_k_best = SelectKBest(mutual_info_classif, k=num_top_features)
-    select_k_best.fit(x_train_copy, y_train)
+    select_k_best.fit(x_train_copy, y)
     selected_features_mic = itemgetter(*select_k_best.get_support(indices=True))(data_columns)
 
     common = list(set(selected_features_anova).intersection(selected_features_mic))
@@ -126,11 +126,7 @@ def select_top_features(x_train, y_train, x_test, x_validation, data_columns, nu
         feat_idx.append(data_columns.index(c))
     feat_idx = sorted(feat_idx[0:225])
 
-    x_train = x_train[:, feat_idx]
-    x_validation = x_validation[:, feat_idx]
-    x_test = x_test[:, feat_idx]
-
-    return x_train, x_test, x_validation
+    return x[:, feat_idx]
 
 
 class DataManager:
@@ -200,9 +196,8 @@ class DataManager:
         return get_balanced_weights(self.y)
 
     def select_top_features(self, num_top_features):
-        self.x, self.test.x, self.validation.x = select_top_features(
+        self.x = select_top_features(
             self.x, self.y,
-            self.test.x, self.validation.x,
             self.data_columns,
             num_top_features)
 
@@ -218,3 +213,6 @@ class DataManager:
             self.test.y = self.label_encoder.transform(self.test.y.reshape(-1, 1))
         if self.validation:
             self.validation.y = self.label_encoder.transform(self.validation.y.reshape(-1, 1))
+
+    def modify_data(self, modifier):
+        self.x, self.y = modifier(self.x, self.y)
