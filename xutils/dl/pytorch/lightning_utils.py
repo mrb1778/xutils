@@ -39,14 +39,6 @@ class WrapperModule(LightningModule):
         loss = self.calculate_loss(y_hat, y)
         return loss
 
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self.model(x)
-        loss = self.calculate_loss(y_hat, y)
-        metrics = {'val_loss': loss}
-        self.log_dict(metrics)
-        return metrics, y_hat, y
-
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.model(x)
@@ -54,6 +46,14 @@ class WrapperModule(LightningModule):
         metrics = {'val_loss': loss}
         self.log_dict(metrics)
         return metrics, y_hat, y
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self.model(x)
+        loss = self.calculate_loss(y_hat, y)
+        metrics = {'val_loss': loss}
+        self.log_dict(metrics)
+        return {'y_hat': y_hat, 'y': y, **metrics}
 
     def calculate_loss(self, y_hat, y):
         return self.loss_fn(y_hat, y)
