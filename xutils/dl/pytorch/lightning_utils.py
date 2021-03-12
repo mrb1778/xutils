@@ -74,7 +74,7 @@ class WrapperModule(LightningModule):
         loss = self.calculate_loss(y_hat, y)
         metrics = {'val_loss': loss}
         self.log_dict(metrics)
-        return {'y_hat': y_hat.numpy(), 'y': y.numpy(), **metrics}
+        return {'y_hat': y_hat.cpu().numpy(), 'y': y.cpu().numpy(), **metrics}
 
     def test_epoch_end(self, outputs):
         y_hat = torch.cat([tmp['y_hat'] for tmp in outputs])
