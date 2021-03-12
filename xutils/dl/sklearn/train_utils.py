@@ -51,7 +51,7 @@ def compare_results(actual, predicted, print_results=True):
         print("Delta", delta)
 
         conf_mat = skm.confusion_matrix(actual, predicted)
-        print("Confusion Matrix", conf_mat)
+        print("Confusion Matrix\n", conf_mat)
         recall = []
         for i, row in enumerate(conf_mat):
             recall.append(np.round(row[i] / np.sum(row), 2))
