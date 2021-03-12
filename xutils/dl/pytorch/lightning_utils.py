@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from xutils.core.python_utils import getattr_ignore_case
+import xutils.dl.sklearn.train_utils as sku
 
 
 class WrapperModule(LightningModule):
@@ -21,11 +22,13 @@ class WrapperModule(LightningModule):
         elif loss_fn == "categorical_cross_entropy":
             # loss_tracker = nn.NLLLoss()
             # self.loss_fn = lambda y_hat, y: loss_tracker(torch.log(y_hat), y)
-            self.loss_fn = lambda y_hat, y: (-(y_hat+1e-5).log() * y).sum(dim=1).mean()
+            self.loss_fn = lambda y_hat, y: (-(y_hat + 1e-5).log() * y).sum(dim=1).mean()
         elif isinstance(loss_fn, str):
             self.loss_fn = getattr_ignore_case(F, loss_fn)
         else:
             self.loss_fn = loss_fn
+
+        self.train_loss_tracker = EMATracker(alpha=0.02)
 
     def forward(self, x):
         return self.model(x)
@@ -37,6 +40,24 @@ class WrapperModule(LightningModule):
         x, y = batch
         y_hat = self.model(x)
         loss = self.calculate_loss(y_hat, y)
+
+        return {'loss': loss, "log": batch_idx % self.trainer.accumulate_grad_batches == 0}
+
+    def _should_log(self, flag):
+        if (self.trainer.global_step + 1) % self.trainer.log_every_n_steps == 0:
+            if isinstance(flag, list):
+                return flag[0]
+            return flag
+        return False
+
+    def training_step_end(self, outputs):
+        # Aggregate the losses from all GPUs
+        loss = outputs["loss"].mean()
+        self.train_loss_tracker.update(loss.detach())
+        if self._should_log(outputs["log"]):
+            self.logger.log_metrics({
+                "train_loss": self.train_loss_tracker.value
+            }, step=self.global_step)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -45,7 +66,7 @@ class WrapperModule(LightningModule):
         loss = self.calculate_loss(y_hat, y)
         metrics = {'val_loss': loss}
         self.log_dict(metrics)
-        return metrics, y_hat, y
+        return metrics
 
     def test_step(self, batch, batch_idx):
         x, y = batch
@@ -53,10 +74,43 @@ class WrapperModule(LightningModule):
         loss = self.calculate_loss(y_hat, y)
         metrics = {'val_loss': loss}
         self.log_dict(metrics)
-        return {'y_hat': y_hat, 'y': y, **metrics}
+        return {'y_hat': y_hat.numpy(), 'y': y.numpy(), **metrics}
+
+    def test_epoch_end(self, outputs):
+        y_hat = torch.cat([tmp['y_hat'] for tmp in outputs])
+        y = torch.cat([tmp['y'] for tmp in outputs])
+        sku.compare_results(y_hat, y)
+        # confusion_matrix = pl.metrics.functional.confusion_matrix(preds, targets, num_classes=10)
+        #
+        # df_cm = pd.DataFrame(confusion_matrix.numpy(), index=range(10), columns=range(10))
+        # plt.figure(figsize=(10, 7))
+        # fig_ = sns.heatmap(df_cm, annot=True, cmap='Spectral').get_figure()
+        # plt.close(fig_)
+        #
+        # self.logger.experiment.add_figure("Confusion matrix", fig_, self.current_epoch)
 
     def calculate_loss(self, y_hat, y):
         return self.loss_fn(y_hat, y)
+
+
+class EMATracker:
+    def __init__(self, alpha: float = 0.05):
+        super().__init__()
+        self.alpha = alpha
+        self._value = None
+
+    def update(self, new_value):
+        if self._value is None:
+            self._value = new_value
+        else:
+            self._value = (
+                    new_value * self.alpha +
+                    self._value * (1 - self.alpha)
+            )
+
+    @property
+    def value(self):
+        return self._value
 
 
 class NumpyXYDataset(Dataset):
