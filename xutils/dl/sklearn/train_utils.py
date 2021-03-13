@@ -187,10 +187,10 @@ class DataManager:
         mm_scaler = MinMaxScaler(feature_range=(0, 1))  # or StandardScaler?
         self.x = mm_scaler.fit_transform(self.x)
 
-        if self.test:
-            self.test.x = mm_scaler.transform(self.test.x)
         if self.validation:
             self.validation.x = mm_scaler.transform(self.validation.x)
+        if self.test:
+            self.test.x = mm_scaler.transform(self.test.x)
 
     def get_balanced_weights(self):
         return get_balanced_weights(self.y)
@@ -209,10 +209,14 @@ class DataManager:
         self.label_encoder = OneHotEncoder(sparse=False, categories='auto')
         self.y = self.label_encoder.fit_transform(self.y.reshape(-1, 1))
 
-        if self.test:
-            self.test.y = self.label_encoder.transform(self.test.y.reshape(-1, 1))
         if self.validation:
             self.validation.y = self.label_encoder.transform(self.validation.y.reshape(-1, 1))
+        if self.test:
+            self.test.y = self.label_encoder.transform(self.test.y.reshape(-1, 1))
 
     def modify_data(self, modifier):
         self.x, self.y = modifier(self.x, self.y)
+        if self.validation:
+            self.validation.x, self.validation.y = modifier(self.validation.x, self.validation.y)
+        if self.test:
+            self.test.x, self.test.y = modifier(self.test.x, self.test.y)
