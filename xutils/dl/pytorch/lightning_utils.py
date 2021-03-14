@@ -226,8 +226,8 @@ def load_model(model_class, path, model_kwargs):
 
 def wrap_model(base_model):
     class WrapperModuleChild(WrapperModule):
-        def __init__(self, **kwargs):
-            super(WrapperModuleChild, self).__init__(base_model, **kwargs)
+        def __init__(self, learning_rate, loss_fn=None):
+            super(WrapperModuleChild, self).__init__(base_model, learning_rate, loss_fn)
 
     return WrapperModuleChild
 
