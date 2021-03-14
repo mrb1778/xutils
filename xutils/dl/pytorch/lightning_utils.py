@@ -217,3 +217,17 @@ class PandasDataModule(DatasetDataModule):
         if self.test_df:
             self.test_dataset = PandasDataset(self.test_df[self.features_col].values,
                                               self.test_df[self.targets_col].values)
+
+
+def load_model(model_class, path, model_kwargs):
+    return model_class.load_from_checkpoint(checkpoint_path=path,
+                                            kwargs=model_kwargs)
+
+
+def wrap_model(base_model):
+    class WrapperModuleChild(WrapperModule):
+        def __init__(self, **kwargs):
+            super(WrapperModuleChild, self).__init__(base_model, **kwargs)
+
+    return WrapperModuleChild
+
