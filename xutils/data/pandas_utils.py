@@ -152,7 +152,9 @@ def print_all(df: pd.DataFrame):
         print(df)
 
 
-def drop_na(df: pd.DataFrame):
+def drop_na(df: pd.DataFrame, verbose=False):
+    if verbose:
+        print(df.isna().sum())
     df.dropna(inplace=True)
     df.reset_index(drop=True, inplace=True)
 
