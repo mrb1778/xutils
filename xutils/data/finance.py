@@ -12,6 +12,10 @@ import xutils.core.net_utils as nu
 import xutils.data.pandas_utils as pu
 import xutils.core.file_utils as fu
 
+BUY = 2
+HOLD = 1
+SELL = 0
+
 
 def download_stock_date_from_alphavantage(path, ticker, api_key, update=False):
     return nu.download_if(
@@ -494,11 +498,11 @@ def add_buy_hold_sell(df, col_name, window_size=11):
                     max_index = i
 
             if max_index == window_middle:
-                labels[window_middle] = 0
+                labels[window_middle] = SELL
             elif min_index == window_middle:
-                labels[window_middle] = 1
+                labels[window_middle] = BUY
             else:
-                labels[window_middle] = 2
+                labels[window_middle] = HOLD
 
         row_counter = row_counter + 1
 
@@ -525,11 +529,11 @@ def add_short_long_ma_crossover(df, short, long, col_name="close"):
     def detect_crossover(diff_prev, diff):
         if diff_prev >= 0 > diff:
             # buy
-            return 1
+            return BUY
         elif diff_prev <= 0 < diff:
-            return 0
+            return SELL
         else:
-            return 2
+            return HOLD
 
     add_sma(df, [short, long], col_name)
     labels = np.zeros((len(df)))
@@ -577,14 +581,14 @@ def add_mean_reversion(df, col_name="close"):
             count = count + 1
 
             if 3 <= count < 8 and ibr.iloc[i] < 0.2:  # TODO implement upto 5 BUYS
-                labels[i] = 1
+                labels[i] = BUY
 
             if count >= 8:
                 count = 0
         elif ibr.iloc[i] > 0.7:  # sell
-            labels[i] = 0
+            labels[i] = SELL
         else:
-            labels[i] = 2
+            labels[i] = HOLD
 
     return labels
 
