@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
+import xutils.core.file_utils as fu
 
 
 def read(*paths) -> pd.DataFrame:
@@ -148,7 +149,7 @@ def get_column_index(df: pd.DataFrame, column):
 
 
 def print_all(df: pd.DataFrame):
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
         print(df)
 
 
@@ -159,9 +160,13 @@ def drop_na(df: pd.DataFrame, verbose=False):
     df.reset_index(drop=True, inplace=True)
 
 
-def sort(df: pd.DataFrame, column):
-    df.sort_values(column, inplace=True)
-    df.reset_index(drop=True, inplace=True)
+def sort(df: pd.DataFrame, column, set_index=False, asc=True):
+    if set_index:
+        df.set_index(column, drop=False, inplace=True)
+        df.sort_index(inplace=True, ascending=asc)
+    else:
+        df.sort_values(column, inplace=True, ascending=asc)
+        df.reset_index(drop=True, inplace=True)
 
 
 def reduce_memory_usage(df: pd.DataFrame, verbose=False):
@@ -217,3 +222,30 @@ def get_correlation(df, d1, d2, spearman=False, kendall=False, verbose=False):
 
 def lower_case_columns(df):
     df.columns = df.columns.str.lower()
+
+
+def add_calc_column(df, column_name, calc_fn, cleanup=False):
+    df[column_name] = calc_fn(df)
+    if cleanup:
+        drop_na(df)
+
+
+def enrich_data(root_path,
+                source_data_path,
+                enrich_fn,
+                enrich_type="enriched",
+                name="data",
+                post_loader_fn=None,
+                update=False):
+    data_path = os.path.join(root_path, enrich_type, name + ".csv")
+
+    def enrich_fn_wrapper(path):
+        df = pd.read_csv(source_data_path)
+        if post_loader_fn is not None:
+            post_loader_fn(df)
+
+        enrich_fn(df)
+        df.to_csv(path, index=False)
+        return path
+
+    return fu.create_file_if(data_path, enrich_fn_wrapper, update)

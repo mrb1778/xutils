@@ -10,7 +10,6 @@ import plotly.graph_objects as go
 
 import xutils.core.net_utils as nu
 import xutils.data.pandas_utils as pu
-import xutils.core.file_utils as fu
 
 BUY = 2
 HOLD = 1
@@ -561,7 +560,7 @@ def add_mean_reversion(df, col_name="close"):
     """
     strategy as described at "https://decodingmarkets.com/mean-reversion-trading-strategy"
 
-    Label code : BUY => 1, SELL => 0, HOLD => 2
+    Label code : BUY => 2, SELL => 0, HOLD => 1
 
     params :
         df => Dataframe with data
@@ -574,7 +573,8 @@ def add_mean_reversion(df, col_name="close"):
     ibr = add_ibr(df)
     total_rows = len(df)
     labels = np.zeros(total_rows)
-    labels[:] = np.nan
+    # labels[:] = np.nan
+    labels[:] = HOLD
     count = 0
     for i, rsi_3 in enumerate(rsi_3_series):
         if rsi_3 < 15:  # buy
@@ -593,15 +593,23 @@ def add_mean_reversion(df, col_name="close"):
     return labels
 
 
-def add_price_rise(df, col_name="close"):
+def get_delta(df, interval=1, col_name="close"):
     """
     labels data based on price rise on next day
       next_day - prev_day
     ((s - s.shift()) > 0).astype(np.int)
     """
-    df["labels"] = ((df[col_name] - df[col_name].shift()) > 0).astype(np.int)
-    df = df[1:]
-    df.reset_index(drop=True, inplace=True)
+    # return ((df[col_name] - df[col_name].shift()) > 0).astype(np.int)
+    return df[col_name].diff(periods=interval)
+
+
+def get_delta_percent(df, interval=1, col_name="close"):
+    """
+    labels data based on price rise on next day
+      next_day - prev_day
+    ((s - s.shift()) > 0).astype(np.int)
+    """
+    return df[col_name].pct_change(periods=interval).replace(np.nan, 0)
 
 
 def add_log_change(df, intervals, col_name="close"):

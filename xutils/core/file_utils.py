@@ -23,9 +23,17 @@ def list_files(path):
     return files
 
 
-def get_files(dir):
-    files = list_files(dir)
-    return [os.path.join(dir, x) for x in files]
+def get_files(path, name_only=False):
+    files = list_files(path)
+    return [x if name_only else os.path.join(path, x) for x in files]
+
+
+def get_file_name(path, strip_extension=False):
+    name = Path(path).name
+    if strip_extension:
+        return name.split(".")[0]
+    else:
+        return name
 
 
 def exists(path, msg):
@@ -65,6 +73,8 @@ def create_file_if(path, create_fn, update=False):
     if not os.path.isfile(path) or update:
         create_parent_dirs(path)
         return create_fn(path)
+    else:
+        return path
 
 
 def create_parent_dirs(path):
@@ -84,3 +94,10 @@ def get_difference(file1, file2, print_results=True):
             print(line.rstrip())
 
     return diff
+
+
+FILENAME_SAFE_CHARS = (' ', '.', '_')
+
+
+def to_file_name(file_name, replace_with="_"):
+    return replace_with.join(c for c in file_name if c.isalnum() or c in FILENAME_SAFE_CHARS).rstrip()

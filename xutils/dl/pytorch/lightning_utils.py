@@ -1,10 +1,14 @@
 from pytorch_lightning import LightningModule, LightningDataModule
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+import pytorch_lightning as pl
+
 from torch.utils.data import DataLoader, Dataset
 import torch
 import torch.nn.functional as F
 
 from xutils.core.python_utils import getattr_ignore_case
 import xutils.dl.sklearn.train_utils as sku
+import xutils.dl.pytorch.utils as pyu
 
 
 class WrapperModule(LightningModule):
@@ -231,3 +235,63 @@ def wrap_model(base_model):
 
     return WrapperModuleChild
 
+
+def train_model(model,
+                dataset,
+                model_kwargs,
+                save_path,
+                save_prefix="checkpoint",
+                epochs=300):
+    lightning_model_fn = wrap_model(model)
+    lightning_model = lightning_model_fn(**model_kwargs)
+
+    callback_checkpoint = ModelCheckpoint(monitor='val_loss',
+                                          dirpath=save_path,
+                                          prefix=save_prefix)  # filename='image-analysis-{epoch:02d}-{val_loss:.2f}')
+    trainer = pl.Trainer(gpus=pyu.num_gpus(),
+                         callbacks=[
+                             EarlyStopping(
+                                 monitor='val_loss',
+                                 patience=25
+                             ),
+                             callback_checkpoint
+                         ],
+                         auto_lr_find=True,
+                         auto_scale_batch_size=True,
+                         max_epochs=epochs)
+    trainer.fit(lightning_model, datamodule=dataset)
+
+    print("Best Model", callback_checkpoint.best_model_path)
+
+    best_model = load_model(lightning_model_fn,
+                            callback_checkpoint.best_model_path,
+                            model_kwargs)
+
+    results = trainer.test(best_model, datamodule=dataset)
+    print("Test Results", results)
+
+    return best_model
+
+
+def test_model(model, x=None, y=None, trainer=None, data=None):
+    if trainer is None:
+        trainer = pl.Trainer(gpus=pyu.num_gpus())
+
+    if data is None:
+        DatasetDataModule(test_dataset=NumpyXYDataset(x, y))
+
+    return trainer.test(model, datamodule=data)
+
+
+def create_data_module(x_train, y_train,
+                       x_validation, y_validation,
+                       x_test, y_test,
+                       dataset_fn=None):
+    if dataset_fn is None:
+        dataset_fn = NumpyXYDataset
+
+    return DatasetDataModule(
+        train_dataset=dataset_fn(x_train, y_train),
+        test_dataset=dataset_fn(x_test, y_test),
+        val_dataset=dataset_fn(x_validation, y_validation)
+    )
