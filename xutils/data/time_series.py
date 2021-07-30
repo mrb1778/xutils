@@ -151,6 +151,7 @@ class PandasMoneySeries(PandasSeries):
                          run_step=run_step)
         self.name = name
         self.initial_balance = balance
+        self.balance_pre_cash_out = 0
         self.balance = self.initial_balance
         self.dividends = 0
         self.balance_history = [self.initial_balance]
@@ -274,7 +275,7 @@ class PandasMoneySeries(PandasSeries):
         else:
             return 100 * all_amounts[name] / total_amount
 
-    def trade(self, name, quantity):
+    def trade(self, name, quantity, **kwargs):
         if quantity == 0:
             return False
 
@@ -291,18 +292,19 @@ class PandasMoneySeries(PandasSeries):
         self.balance = self.balance - total
         self.balance_history.append(self.balance)
 
-        asset_history = {
+        transaction_history = {
             "type": "buy" if quantity > 0 else "sell",
             "name": name,
             "quantity": quantity,
             "price": price,
             "total": total,
             "index": self.current_index,
+            **kwargs
         }
         # if self.date_column is not None:
-        #     asset_history["date"] = self.get_value(name, column=self.date_column)
+        #     transaction_history["date"] = self.get_value(name, column=self.date_column)
 
-        self.history.append(asset_history)
+        self.history.append(transaction_history)
 
         stored_asset = self.get_asset(name)
         if not stored_asset:
@@ -316,11 +318,11 @@ class PandasMoneySeries(PandasSeries):
 
         stored_asset = self.assets[name]
         stored_asset["quantity"] += quantity
-        stored_asset["history"].append(asset_history)
+        stored_asset["history"].append(transaction_history)
 
         inventory = stored_asset["inventory"]
         if quantity > 0:
-            inventory.append(asset_history)
+            inventory.append(transaction_history)
         else:
             quantity_left = quantity
 
@@ -336,13 +338,11 @@ class PandasMoneySeries(PandasSeries):
         return True
 
     def cash_out(self):
-        # print("before cash out balance", self.balance)
+        self.balance_pre_cash_out = self.balance
         for asset, asset_details in self.assets.items():
             quantity = asset_details["quantity"]
             if quantity > 0:
-                # print("cash out asset", asset, "->", quantity)
                 self.trade(asset, -quantity)
-        # print("after cash out balance", self.balance)
 
     def get_summary(self):
         return {
@@ -350,6 +350,7 @@ class PandasMoneySeries(PandasSeries):
             "delta_percent": 100 * (self.balance - self.initial_balance) / self.initial_balance,
             "balance": self.balance,
             "initial_balance": self.initial_balance,
+            "balance_pre_cash_out": self.balance_pre_cash_out,
             "balance_delta": self.balance - self.initial_balance,
             "dividends": self.dividends,
             "transactions": len(self.history),

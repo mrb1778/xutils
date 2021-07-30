@@ -612,6 +612,14 @@ def get_delta_percent(df, interval=1, col_name="close"):
     return df[col_name].pct_change(periods=interval).replace(np.nan, 0)
 
 
+def get_buy_sell(df, buy_positive=True):
+    return df.apply(lambda x: BUY if x > 0 and buy_positive else SELL)
+
+
+def set_as_buy_sell(df, col_name="label", buy_positive=True):
+    df[col_name] = get_buy_sell(df[col_name], buy_positive=buy_positive)
+
+
 def add_log_change(df, intervals, col_name="close"):
     for i in intervals:
         column = "log_change_" + str(i)
