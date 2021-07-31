@@ -2,8 +2,7 @@ import numpy as np
 import sklearn.utils as sku
 import sklearn.metrics as skm
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.preprocessing import OneHotEncoder
+import sklearn.preprocessing as preprocessing
 from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
 from operator import itemgetter
 import os
@@ -70,7 +69,7 @@ def compare_results(actual, predicted, print_results=True):
     return delta
 
 
-def split_train_data(x, y, train_split=0.8, scale=False):
+def split_data(x, y, train_split=0.8, scale=False):
     x_train, x_test, y_train, y_test = train_test_split(
         x,
         y,
@@ -102,21 +101,25 @@ def split_train_data(x, y, train_split=0.8, scale=False):
 
 
 def scale_split_data(data):
-    mm_scaler = MinMaxScaler(feature_range=(0, 1))  # or StandardScaler?
+    mm_scaler = preprocessing.MinMaxScaler(feature_range=(0, 1))  # or StandardScaler?
     data.train.x = mm_scaler.fit_transform(data.train.x)
     data.validation.x = mm_scaler.transform(data.validation.x)
     data.test.x = mm_scaler.transform(data.test.x)
 
 
+def normalize_min_max(values):
+    return preprocessing.MinMaxScaler().fit_transform(values)
+
+
 def select_top_features(x, y, data_columns, num_top_features):
-    x_train_copy = x.copy()
+    x_copy = x.copy()
 
     select_k_best = SelectKBest(f_classif, k=num_top_features)
-    select_k_best.fit(x_train_copy, y)
+    select_k_best.fit(x_copy, y)
     selected_features_anova = itemgetter(*select_k_best.get_support(indices=True))(data_columns)
 
     select_k_best = SelectKBest(mutual_info_classif, k=num_top_features)
-    select_k_best.fit(x_train_copy, y)
+    select_k_best.fit(x_copy, y)
     selected_features_mic = itemgetter(*select_k_best.get_support(indices=True))(data_columns)
 
     common = list(set(selected_features_anova).intersection(selected_features_mic))
@@ -184,7 +187,7 @@ class DataManager:
         return data_set
 
     def scale_data(self):
-        mm_scaler = MinMaxScaler(feature_range=(0, 1))  # or StandardScaler?
+        mm_scaler = preprocessing.MinMaxScaler(feature_range=(0, 1))  # or StandardScaler?
         self.x = mm_scaler.fit_transform(self.x)
 
         if self.validation:
@@ -206,7 +209,7 @@ class DataManager:
         return self.labels
 
     def encode_labels(self):
-        self.label_encoder = OneHotEncoder(sparse=False, categories='auto')
+        self.label_encoder = preprocessing.OneHotEncoder(sparse=False, categories='auto')
         self.y = self.label_encoder.fit_transform(self.y.reshape(-1, 1))
 
         if self.validation:

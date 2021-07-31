@@ -1,3 +1,4 @@
+from sklearn import preprocessing
 import numpy as np
 import pandas as pd
 import pandas_datareader.data as web
@@ -613,7 +614,10 @@ def get_delta_percent(df, interval=1, col_name="close"):
 
 
 def get_buy_sell(df, buy_positive=True):
-    return df.apply(lambda x: BUY if x > 0 and buy_positive else SELL)
+    if buy_positive:  # todo: simplify
+        return df.apply(lambda x: BUY if x > 0 else SELL)
+    else:
+        return df.apply(lambda x: SELL if x > 0 else BUY)
 
 
 def set_as_buy_sell(df, col_name="label", buy_positive=True):
