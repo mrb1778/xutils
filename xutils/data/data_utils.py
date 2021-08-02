@@ -40,7 +40,7 @@ def compare_results(actual, predicted, print_results=True):
 
     e = np.equal(actual, predicted)
     # todo: holds [2] is causing issues with data with output size of 2, prob meant for 3 --> take num / classes or calc
-    print(np.unique(predicted, return_counts=True).shape)
+    print(len(np.unique(predicted, return_counts=True)[1]))
     holds = np.unique(predicted, return_counts=True)[1][2]
     delta = (holds / len(predicted) * 100)
 
