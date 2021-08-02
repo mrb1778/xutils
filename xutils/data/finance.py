@@ -524,7 +524,7 @@ def add_short_long_ma_crossover(df, short, long, col_name="close"):
     returns : numpy array with integer codes for labels
     """
 
-    print("creating label with {}_{}_ma".format(short, long))
+    print(f"creating label with {short}_{long}_ma")
 
     def detect_crossover(diff_prev, diff):
         if diff_prev >= 0 > diff:

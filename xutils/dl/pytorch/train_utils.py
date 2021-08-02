@@ -64,7 +64,7 @@ def compute_metrics(model,
 
     if plot_roc_curve:
         fpr, tpr, _ = roc_curve(target_list.tolist(), score_list.tolist())
-        plt.plot(fpr, tpr, label="Area under ROC = {:.4f}".format(roc_score))
+        plt.plot(fpr, tpr, label=f"Area under ROC = {roc_score:.4f}")
         plt.legend(loc='best')
         plt.xlabel('False Positive Rate')
         plt.ylabel('True Positive Rate')
@@ -72,10 +72,10 @@ def compute_metrics(model,
 
     if verbose:
         print('------------------- Test Performance --------------------------------------')
-        print("Accuracy \t {:.3f}".format(accuracy))
-        print("Sensitivity \t {:.3f}".format(sensitivity))
-        print("Specificity \t {:.3f}".format(specificity))
-        print("Area Under ROC \t {:.3f}".format(roc_score))
+        print(f"Accuracy \t {accuracy:.3f}")
+        print(f"Sensitivity \t {sensitivity:.3f}")
+        print(f"Specificity \t {specificity:.3f}")
+        print(f"Area Under ROC \t {roc_score:.3f}")
         print("------------------------------------------------------------------------------")
 
     return {
@@ -198,13 +198,12 @@ def train(model, optimizer, train_loader, val_loader, log_dir, early_stopper, le
 
         # Compute and print the performance metrics
         metrics_dict = compute_metrics(model, val_loader)
-        print('------------------ Epoch {} Iteration {}--------------------------------------'.format(epoch,
-                                                                                                      iter_num))
-        print("Accuracy \t {:.3f}".format(metrics_dict['Accuracy']))
-        print("Sensitivity \t {:.3f}".format(metrics_dict['Sensitivity']))
-        print("Specificity \t {:.3f}".format(metrics_dict['Specificity']))
-        print("Area Under ROC \t {:.3f}".format(metrics_dict['Roc_score']))
-        print("Val Loss \t {}".format(metrics_dict["Validation Loss"]))
+        print(f'------------------ Epoch {epoch} Iteration {iter_num}--------------------------------------')
+        print(f"Accuracy \t {metrics_dict['Accuracy']:.3f}")
+        print(f"Sensitivity \t {metrics_dict['Sensitivity']:.3f}")
+        print(f"Specificity \t {metrics_dict['Specificity']:.3f}")
+        print(f"Area Under ROC \t {metrics_dict['Roc_score']:.3f}")
+        print(f"Val Loss", metrics_dict["Validation Loss"])
         print("------------------------------------------------------------------------------")
 
         # Save the model with best validation accuracy
@@ -213,9 +212,9 @@ def train(model, optimizer, train_loader, val_loader, log_dir, early_stopper, le
             best_val_score = metrics_dict['Accuracy']
 
         # print the metrics for training data for the epoch
-        print('\nTraining Performance Epoch {}: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-            epoch, train_loss / len(train_loader.dataset), train_correct, len(train_loader.dataset),
-                   100.0 * train_correct / len(train_loader.dataset)))
+        print(f'\nTraining Performance Epoch {epoch}: Average loss: {train_loss / len(train_loader.dataset):.4f}, '
+              f'Accuracy: {train_correct}/{len(train_loader.dataset)} '
+              f'({100.0 * train_correct / len(train_loader.dataset):.0f}%)\n')
 
         # log the accuracy and losses in tensorboard
         writer.add_scalars("Losses", {'Train loss': train_loss / len(train_loader),
@@ -238,5 +237,5 @@ def train(model, optimizer, train_loader, val_loader, log_dir, early_stopper, le
             for param_group in optimizer.param_groups:
                 learning_rate *= 0.1
                 param_group['lr'] = learning_rate
-                print('Updating the learning rate to {}'.format(learning_rate))
+                print(f'Updating the learning rate to {learning_rate}')
                 early_stopper.reset()

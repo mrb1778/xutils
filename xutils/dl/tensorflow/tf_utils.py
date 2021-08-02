@@ -310,10 +310,8 @@ def plot_sample_results(x_test, y_test, y_hat, labels, num_random=15):
         predict_index = np.argmax(y_hat[index])
         true_index = np.argmax(y_test[index])
         # Set the title for each image
-        ax.set_title("{} ({})".format(labels[predict_index],
-                                      labels[true_index]),
+        ax.set_title(f"{labels[predict_index]} ({labels[true_index]})",
                      color=("green" if predict_index == true_index else "red"))
-
     plt.show(block=True)
 
 
@@ -938,7 +936,7 @@ def print_model_info(graph, op_type='Conv2D', print_all=False):
     if print_all:
         for op in graph.get_operations():
             if 'import/' in op.name:
-                print("Name: {}, Type: {}".format(op.name, op.type))
+                print(f"Name: {op.name}, Type: {op.type}")
 
     layers = [op.name for op in graph.get_operations() if op.type == op_type and 'import/' in op.name]
 
@@ -1299,7 +1297,7 @@ def test_install():
 
     x = [[2.]]
     m = tf.matmul(x, x)
-    print("hello, {}".format(m))
+    print(f"hello, {m}")
 
 
 class KerasTrainer(tu.Trainer):

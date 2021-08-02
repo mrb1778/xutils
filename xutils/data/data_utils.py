@@ -55,7 +55,7 @@ def compare_results(actual, predicted, print_results=True):
         recall = []
         for i, row in enumerate(conf_mat):
             recall.append(np.round(row[i] / np.sum(row), 2))
-            print("Recall of class {} = {}".format(i, recall[i]))
+            print(f"Recall of class {i} = {recall[i]}")
         print("Recall avg", sum(recall) / len(recall))
 
         print("F1 score (weighted)", skm.f1_score(actual, predicted, labels=None,

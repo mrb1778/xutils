@@ -50,10 +50,10 @@ class Scale(Layer):
         # self.beta = K.variable(self.beta_init(shape), name='{}_beta'.format(self.name))
         # self.trainable_weights = [self.gamma, self.beta]
 
-        self.gamma = self.add_weight('{}_gamma'.format(self.name),
+        self.gamma = self.add_weight(f'{self.name}_gamma',
                                      self.gamma_init(shape))
 
-        self.gamma = self.add_weight('{}_beta'.format(self.name),
+        self.gamma = self.add_weight(f'{self.name}_beta',
                                      self.beta_init(shape))
 
         if self.initial_weights is not None:

@@ -35,9 +35,9 @@ def upload_blob(bucket_name, source_file_name, destination_blob_name, content_ty
     data_uri = blob.self_link
 
     if algo_unique_key != "":
-        return os.path.join("gs+{}://{}".format(algo_unique_key, bucket_name), data_uri.split("/")[-1])
+        return os.path.join(f"gs+{algo_unique_key}://{bucket_name}", data_uri.split("/")[-1])
 
-    return os.path.join("gs://{}".format(bucket_name), data_uri.split("/")[-1])
+    return os.path.join(f"gs://{bucket_name}", data_uri.split("/")[-1])
 
 
 def delete_blob(bucket_name, blob_name):
@@ -49,7 +49,7 @@ def delete_blob(bucket_name, blob_name):
     blob = bucket.blob(blob_name)
     blob.delete()
 
-    print("Blob {} deleted.".format(blob_name))
+    print(f"Blob {blob_name} deleted.")
 
 
 def generate_signed_url(output_uri):
