@@ -39,15 +39,16 @@ def compare_results(actual, predicted, print_results=True):
     predicted = np.argmax(predicted, axis=1)
 
     e = np.equal(actual, predicted)
-    holds = np.unique(predicted, return_counts=True)[1][2]
-    delta = (holds / len(predicted) * 100)
+    # todo: holds [2] is causing issues with data with output size of 2, prob meant for 3 --> take num / classes or calc
+    # holds = np.unique(predicted, return_counts=True)[1][2]
+    # delta = (holds / len(predicted) * 100)
 
     if print_results:
         print("Size", len(actual))
         print("Match", np.unique(predicted[e], return_counts=True))
         print("Base", np.unique(actual, return_counts=True))
         print("Test", np.unique(predicted, return_counts=True))
-        print("Delta", delta)
+        # print("Delta", delta)
 
         conf_mat = skm.confusion_matrix(actual, predicted)
         print("Confusion Matrix\n", conf_mat)
@@ -66,7 +67,7 @@ def compare_results(actual, predicted, print_results=True):
                                                sample_weight=None))  # weighted and micro preferred in case of imbalance
         print("Cohen's Kappa", skm.cohen_kappa_score(actual, predicted))
 
-    return delta
+    # return delta
 
 
 def split_data(x, y, train_split=0.8, scale=False):
