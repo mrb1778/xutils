@@ -40,16 +40,17 @@ def compare_results(actual, predicted, print_results=True):
 
     e = np.equal(actual, predicted)
     # todo: holds [2] is causing issues with data with output size of 2, prob meant for 3 --> take num / classes or calc
-    print(len(np.unique(predicted, return_counts=True)[1]))
-    holds = np.unique(predicted, return_counts=True)[1][2]
-    delta = (holds / len(predicted) * 100)
+    print("predicted", predicted)
+    print("-------size", len(np.unique(predicted, return_counts=True)[1]))
+    # holds = np.unique(predicted, return_counts=True)[1][-1]
+    # delta = (holds / len(predicted) * 100)
 
     if print_results:
         print("Size", len(actual))
         print("Match", np.unique(predicted[e], return_counts=True))
         print("Base", np.unique(actual, return_counts=True))
         print("Test", np.unique(predicted, return_counts=True))
-        print("Delta", delta)
+        # print("Delta", delta)
 
         conf_mat = skm.confusion_matrix(actual, predicted)
         print("Confusion Matrix\n", conf_mat)
