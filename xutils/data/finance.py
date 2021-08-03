@@ -615,12 +615,16 @@ def get_delta_percent(df, interval=1, col_name="close"):
 
 def get_buy_sell(df, buy_positive=True):
     def get_result(x):
-        if x == 0:
-            return HOLD
-        elif x > 0:
-            return BUY if buy_positive else SELL
-        elif x < 0:
-            return SELL if buy_positive else BUY
+        if x > 0:
+            return 1 if buy_positive else 0
+        else:
+            return 0 if buy_positive else 1
+        # if x == 0:
+        #     return HOLD
+        # elif x > 0:
+        #     return BUY if buy_positive else SELL
+        # elif x < 0:
+        #     return SELL if buy_positive else BUY
 
     return df.apply(get_result)
 
