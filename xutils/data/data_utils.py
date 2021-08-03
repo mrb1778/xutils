@@ -56,6 +56,9 @@ def compare_results(actual, predicted, print_results=True):
         print("Confusion Matrix\n", conf_mat)
         recall = []
         for i, row in enumerate(conf_mat):
+            print(f"File: data_utils; Method: compare_results; Line: 59; Variable: np.round(row[i] = {np.round(row[i])}")
+            print(f"File: data_utils; Method: compare_results; Line: 59; Variable: np.sum(row) = {np.sum(row)}")
+
             recall.append(np.round(row[i] / np.sum(row), 2))
             print(f"Recall of class {i} = {recall[i]}")
         print("Recall avg", sum(recall) / len(recall))
