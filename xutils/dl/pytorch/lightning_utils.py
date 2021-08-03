@@ -126,7 +126,7 @@ class NumpyXYDataset(Dataset):
         return len(self.x)
 
     def __getitem__(self, idx):
-        return torch.from_numpy(self.x[idx]).float(), torch.from_numpy(self.y[idx]).float()
+        return torch.from_numpy(self.x[idx]), torch.from_numpy(self.y[idx])
 
 
 class DatasetDataModule(LightningDataModule):
