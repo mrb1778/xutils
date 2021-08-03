@@ -211,7 +211,7 @@ class DataManager:
             num_top_features)
 
     def generate_unique_labels(self):
-        self.labels = np.unique(self.y, return_counts=True)
+        self.labels = np.unique(self.y, return_counts=False)
         return self.labels
 
     def encode_labels(self):
