@@ -250,10 +250,10 @@ def train_model(model,
                                           prefix=save_prefix)  # filename='image-analysis-{epoch:02d}-{val_loss:.2f}')
     trainer = pl.Trainer(gpus=pyu.num_gpus(),
                          callbacks=[
-                             EarlyStopping(
-                                 monitor='val_loss',
-                                 patience=25
-                             ),
+                             # EarlyStopping(
+                             #     monitor='val_loss',
+                             #     patience=25
+                             # ),
                              callback_checkpoint
                          ],
                          auto_lr_find=True,
