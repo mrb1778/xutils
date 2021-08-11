@@ -4,9 +4,13 @@ import sklearn.metrics as skm
 from sklearn.model_selection import train_test_split
 import sklearn.preprocessing as preprocessing
 from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
+import json
+import pickle
 from operator import itemgetter
 import os
 import random as rn
+
+import xutils.core.file_utils as fu
 
 
 def set_random_seed(seed=1235):
@@ -56,7 +60,8 @@ def compare_results(actual, predicted, print_results=True):
         print("Confusion Matrix\n", conf_mat)
         recall = []
         for i, row in enumerate(conf_mat):
-            print(f"File: data_utils; Method: compare_results; Line: 59; Variable: np.round(row[i] = {np.round(row[i])}")
+            print(
+                f"File: data_utils; Method: compare_results; Line: 59; Variable: np.round(row[i] = {np.round(row[i])}")
             print(f"File: data_utils; Method: compare_results; Line: 59; Variable: np.sum(row) = {np.sum(row)}")
 
             recall.append(np.round(row[i] / np.sum(row), 2))
@@ -117,7 +122,7 @@ def normalize_min_max(values):
     return preprocessing.MinMaxScaler().fit_transform(values)
 
 
-def select_top_features(x, y, data_columns, num_top_features):
+def find_top_features(x, y, data_columns, num_top_features):
     x_copy = x.copy()
 
     select_k_best = SelectKBest(f_classif, k=num_top_features)
@@ -135,16 +140,23 @@ def select_top_features(x, y, data_columns, num_top_features):
         feat_idx.append(data_columns.index(c))
     feat_idx = sorted(feat_idx[0:225])
 
-    return x[:, feat_idx]
+    return feat_idx
+
+
+def select_top_features(x, y, data_columns, num_top_features):
+    return x[:, find_top_features(x, y, data_columns, num_top_features)]
 
 
 class DataManager:
     def __init__(self,
                  x=None, y=None,
                  test=None, validation=None,
-                 labels=None, label_encoder=None,
+                 labels=None,
+                 label_encoder=None,
                  data_columns=None,
-                 data_loader=None, data_enricher=None) -> None:
+                 data_loader=None,
+                 data_enricher=None,
+                 df=None) -> None:
         super().__init__()
         self.x = x
         self.y = y
@@ -153,15 +165,39 @@ class DataManager:
         self.test = test
         self.validation = validation
         self.labels = labels
+
+        self.top_features = None
         self.label_encoder = label_encoder
         self.data_loader = data_loader
         self.data_enricher = data_enricher
+
+        self.df = df
+
+        self.history = []
 
     def load_data(self, *args, **kwargs):
         if self.data_loader is not None:
             self.data_loader(*args, **kwargs)
         else:
             raise Exception("Data loader not set")
+
+    def load_config(self, path):
+        with open(path, 'rb') as f:
+            self.set_config(pickle.load(f))
+
+    def set_config(self, config):
+        for config_item in config:
+            type_ = config_item["type"]
+            data_fn = getattr(self, type_)
+            if data_fn is None:
+                raise Exception("Can not load config, can not invoke", type_)
+            del config_item["type"]
+            data_fn(self, **config_item)
+
+    def dump_config(self, path):
+        fu.create_parent_dirs(path)
+        with open(path, 'wb') as f:
+            pickle.dump(self.history, f)
 
     def enrich_data(self, *args, **kwargs):
         if self.data_enricher is not None:
@@ -192,23 +228,36 @@ class DataManager:
 
         return data_set
 
-    def scale_data(self):
-        mm_scaler = preprocessing.MinMaxScaler(feature_range=(0, 1))  # or StandardScaler?
-        self.x = mm_scaler.fit_transform(self.x)
+    def scale_data(self, scaler=None):
+        if scaler is None:
+            scaler = preprocessing.MinMaxScaler(feature_range=(0, 1))  # or StandardScaler?
+            scaler.fit(self.x)
+
+        self.x = scaler.transform(self.x)
 
         if self.validation:
-            self.validation.x = mm_scaler.transform(self.validation.x)
+            self.validation.x = scaler.transform(self.validation.x)
         if self.test:
-            self.test.x = mm_scaler.transform(self.test.x)
+            self.test.x = scaler.transform(self.test.x)
+
+        self.history.append({"type": "scale_data", "scaler": scaler})
 
     def get_balanced_weights(self):
         return get_balanced_weights(self.y)
 
-    def select_top_features(self, num_top_features):
-        self.x = select_top_features(
-            self.x, self.y,
-            self.data_columns,
-            num_top_features)
+    def find_top_features(self, num_top_features):
+        return find_top_features(
+            x=self.x, y=self.y,
+            data_columns=self.data_columns,
+            num_top_features=num_top_features)
+
+    def select_top_features(self, num_top_features=0, top_features=None):
+        if top_features is None:
+            top_features = self.find_top_features(num_top_features)
+
+        self.x = self.x[:, top_features]
+
+        self.history.append({"type": "select_top_features", "top_features": top_features})
 
     def generate_unique_labels(self):
         self.labels = np.unique(self.y, return_counts=False)
@@ -223,9 +272,36 @@ class DataManager:
         if self.test:
             self.test.y = self.label_encoder.transform(self.test.y.reshape(-1, 1))
 
+    def reshape(self, size):
+        self.x = self.x.reshape(*size)
+        self.history.append({"type": "reshape", "size": size})
+
+    def modify_x(self, modifier):
+        self.x = modifier(self.x)
+        if self.validation:
+            self.validation.x = modifier(self.validation.x)
+        if self.test:
+            self.test.x = modifier(self.test.x)
+
     def modify_data(self, modifier):
         self.x, self.y = modifier(self.x, self.y)
         if self.validation:
             self.validation.x, self.validation.y = modifier(self.validation.x, self.validation.y)
         if self.test:
             self.test.x, self.test.y = modifier(self.test.x, self.test.y)
+
+    def drop_columns(self, *columns):
+        self.df.drop(columns=[*columns], inplace=True, errors='ignore')
+
+        self.history.append({"type": "drop_columns", "columns": columns})
+
+    def data_from_column(self, start, end):
+        data = self.df.loc[:, start:end]
+        self.x = data.values
+        self.labels = list(data.columns)
+        self.history.append({"type": "data_from_column", "start": start, "end": end})
+        self.data_columns = list(data.columns)
+
+    def label_from_column(self, column):
+        self.y = self.df[column].values
+        self.history.append({"type": "label_from_column", "column": column})

@@ -3,6 +3,8 @@ import sys
 import inspect
 from typing import Iterable
 
+import tabulate
+
 
 class DisablePrintStatements:
     """with DisablePrintStatements(): ..."""
@@ -32,3 +34,13 @@ def getattr_ignore_case(obj, attr: str):
     for a in dir(obj):
         if a.lower() == attr.lower():
             return getattr(obj, a)
+
+
+def print_dict(results, sort_on=None):
+    if sort_on is not None:
+        results = sorted(results, key=lambda entry: entry[sort_on], reverse=True)
+    header = results[0].keys()
+    rows = [x.values() for x in results]
+    output = tabulate.tabulate(rows, header)
+    print(output)
+    return output

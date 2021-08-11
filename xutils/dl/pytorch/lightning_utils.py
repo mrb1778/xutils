@@ -223,9 +223,11 @@ class PandasDataModule(DatasetDataModule):
                                               self.test_df[self.targets_col].values)
 
 
-def load_model(model_class, path, model_kwargs):
-    return model_class.load_from_checkpoint(checkpoint_path=path,
-                                            kwargs=model_kwargs)
+def load_model(model, path, model_kwargs):
+    if not isinstance(model, pl.LightningModule):
+        model = wrap_model(model)
+    return model.load_from_checkpoint(checkpoint_path=path,
+                                      kwargs=model_kwargs)
 
 
 def wrap_model(base_model):
@@ -280,7 +282,12 @@ def test_model(model, x=None, y=None, trainer=None, data=None):
     if data is None:
         DatasetDataModule(test_dataset=NumpyXYDataset(x, y))
 
-    return trainer.test(model, datamodule=data)
+    return trainer.test(model, datamodule=data, verbose=True)
+
+
+def run_model(model, x=None):
+    model.eval()
+    return model(x)
 
 
 def create_data_module(x_train, y_train,
