@@ -15,7 +15,7 @@ class WrapperModule(LightningModule):
     def __init__(self, wrapped, learning_rate, loss_fn=None):
         super(WrapperModule, self).__init__()
         self.model = wrapped
-        self.model.to(self.device)
+        # self.model.to(self.device)
 
         self.learning_rate = learning_rate
         self.save_hyperparameters('learning_rate', 'loss_fn')
