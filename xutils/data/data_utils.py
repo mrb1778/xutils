@@ -172,6 +172,8 @@ class DataManager:
         self.data_enricher = data_enricher
 
         self.df = df
+        self.shape_x = None
+        self.shape_y = None
 
         self.history = []
 
@@ -205,6 +207,18 @@ class DataManager:
         fu.create_parent_dirs(path)
         with open(path, 'wb') as f:
             pickle.dump(self.history, f)
+
+    def persist_shape(self):
+        self.shape_x = self.x[0].shape
+        self.shape_y = len(np.unique(self.y))
+
+        self.history.append({"type": "set_shape", "x": self.shape_x, "y": self.shape_y})
+
+    def set_shape(self, x=None, y=None):
+        self.shape_x = x
+        self.shape_y = y
+
+        self.history.append({"type": "set_shape", "x": self.shape_x, "y": self.shape_y})
 
     def enrich_data(self, *args, **kwargs):
         if self.data_enricher is not None:
