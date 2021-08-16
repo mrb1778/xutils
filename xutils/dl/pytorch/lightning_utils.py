@@ -15,7 +15,7 @@ class WrapperModule(LightningModule):
     def __init__(self, wrapped, learning_rate, loss_fn=None):
         super(WrapperModule, self).__init__()
         self.model = wrapped
-        # self.model.to(self.device)
+        self.model.to(self.device)
 
         self.learning_rate = learning_rate
         self.save_hyperparameters('learning_rate', 'loss_fn')
@@ -229,11 +229,11 @@ class PandasDataModule(DatasetDataModule):
                                               self.test_df[self.targets_col].values)
 
 
-def load_model(model, path, model_kwargs):
-    if not isinstance(model, pl.LightningModule):
-        model = wrap_model(model)
-    return model.load_from_checkpoint(checkpoint_path=path,
-                                      kwargs=model_kwargs)
+def load_model(model_or_class, path, model_kwargs, wrap=False):
+    if wrap:
+        model_or_class = wrap_model(model_or_class)
+    return model_or_class.load_from_checkpoint(checkpoint_path=path,
+                                               kwargs=model_kwargs)
 
 
 def wrap_model(base_model):
@@ -271,9 +271,9 @@ def train_model(model,
 
     print("Best Model", callback_checkpoint.best_model_path)
 
-    best_model = load_model(lightning_model_fn,
-                            callback_checkpoint.best_model_path,
-                            model_kwargs)
+    best_model = load_model(model_or_class=lightning_model_fn,
+                            path=callback_checkpoint.best_model_path,
+                            model_kwargs=model_kwargs)
 
     results = trainer.test(best_model, datamodule=dataset)
     print("Test Results", results)
@@ -293,7 +293,8 @@ def test_model(model, x=None, y=None, trainer=None, data=None):
 
 def run_model(model, x=None):
     model.eval()
-    return model(x)
+    with torch.no_grad():
+        return model(x)
 
 
 def create_data_module(x_train, y_train,
