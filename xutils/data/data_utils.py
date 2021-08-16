@@ -193,12 +193,12 @@ class DataManager:
                 raise Exception("Can not load config, can not invoke", type_)
             del config_item["type"]
 
-            args = []
             if "args" in config_item:
                 args = config_item["args"]
                 del config_item["args"]
-
-            data_fn(self, *args, **config_item)
+                data_fn(self, *args)
+            else:
+                data_fn(self, **config_item)
 
     def dump_config(self, path):
         fu.create_parent_dirs(path)
