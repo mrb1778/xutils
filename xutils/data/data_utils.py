@@ -196,10 +196,10 @@ class DataManager:
             if "args" in config_item:
                 args = config_item["args"]
                 del config_item["args"]
-                data_fn(self, *args)
+                data_fn(*args)
             else:
                 print("set_config", type_, "kwargs", config_item)
-                data_fn(self, **config_item)
+                data_fn(**config_item)
 
     def dump_config(self, path):
         fu.create_parent_dirs(path)
