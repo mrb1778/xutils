@@ -278,7 +278,7 @@ class DataManager:
         if self.test:
             self.test.y = self.label_encoder.transform(self.test.y.reshape(-1, 1))
 
-    def reshape(self, size):
+    def reshape(self, size=None):
         self.x = self.x.reshape(*size)
         self.history.append({"type": "reshape", "size": size})
 
@@ -301,7 +301,7 @@ class DataManager:
 
         self.history.append({"type": "drop_columns", "args": columns})
 
-    def data_from_column(self, start, end):
+    def data_from_column(self, start=None, end=None):
         data = self.df.loc[:, start:end]
         self.x = data.values
         self.labels = list(data.columns)
