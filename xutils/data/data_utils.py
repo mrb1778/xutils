@@ -192,7 +192,13 @@ class DataManager:
             if data_fn is None:
                 raise Exception("Can not load config, can not invoke", type_)
             del config_item["type"]
-            data_fn(self, **config_item)
+
+            args = []
+            if "args" in config_item:
+                args = config_item["args"]
+                del config_item["args"]
+
+            data_fn(self, *args, **config_item)
 
     def dump_config(self, path):
         fu.create_parent_dirs(path)
@@ -293,7 +299,7 @@ class DataManager:
     def drop_columns(self, *columns):
         self.df.drop(columns=[*columns], inplace=True, errors='ignore')
 
-        self.history.append({"type": "drop_columns", "columns": columns})
+        self.history.append({"type": "drop_columns", "args": columns})
 
     def data_from_column(self, start, end):
         data = self.df.loc[:, start:end]
