@@ -198,6 +198,7 @@ class DataManager:
                 del config_item["args"]
                 data_fn(self, *args)
             else:
+                print("set_config", type_, "kwargs", config_item)
                 data_fn(self, **config_item)
 
     def dump_config(self, path):
