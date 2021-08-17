@@ -292,6 +292,7 @@ def test_model(model, x=None, y=None, trainer=None, data=None):
 
 
 def run_model(model, x=None):
+    x = torch.from_numpy(x)
     model.eval()
     with torch.no_grad():
         return model(x)
