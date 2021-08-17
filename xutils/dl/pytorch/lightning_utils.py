@@ -291,8 +291,12 @@ def test_model(model, x=None, y=None, trainer=None, data=None):
     return trainer.test(model, datamodule=data, verbose=True)
 
 
-def run_model(model, x=None):
-    x = torch.from_numpy(x)
+def run_model(model, x=None, add_batch_dimension=False):
+    if not isinstance(x, torch.Tensor):
+        x = torch.from_numpy(x)
+    if add_batch_dimension:
+        x = x.unsqueeze(0)
+
     model.eval()
     with torch.no_grad():
         return model(x)
