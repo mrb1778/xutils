@@ -285,13 +285,22 @@ class DataManager:
         return self.labels
 
     def encode_labels(self):
-        self.label_encoder = preprocessing.OneHotEncoder(sparse=False, categories='auto')
-        self.y = self.label_encoder.fit_transform(self.y.reshape(-1, 1))
+        label_encoder = preprocessing.OneHotEncoder(sparse=False, categories='auto')
+        self.y = label_encoder.fit_transform(self.y.reshape(-1, 1))
 
         if self.validation:
-            self.validation.y = self.label_encoder.transform(self.validation.y.reshape(-1, 1))
+            self.validation.y = label_encoder.transform(self.validation.y.reshape(-1, 1))
         if self.test:
-            self.test.y = self.label_encoder.transform(self.test.y.reshape(-1, 1))
+            self.test.y = label_encoder.transform(self.test.y.reshape(-1, 1))
+
+        self.set_label_encoder(label_encoder)
+
+    def decode_labels(self, x):
+        return self.label_encoder.inverse_transform(x)
+
+    def set_label_encoder(self, label_encoder=None):
+        self.label_encoder = label_encoder
+        self.history.append({"type": "set_label_encoder", "label_encoder": label_encoder})
 
     def reshape(self, size=None):
         self.x = self.x.reshape(*size)
