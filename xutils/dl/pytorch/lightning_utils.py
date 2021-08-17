@@ -96,12 +96,6 @@ class WrapperModule(LightningModule):
     def calculate_loss(self, y_hat, y):
         return self.loss_fn(y_hat, y)
 
-    def accuracy(self, logits, labels):
-        _, predicted = torch.max(logits.data, 1)
-        correct = (predicted == labels).sum().item()
-        accuracy = correct / len(labels)
-        return torch.tensor(accuracy)
-
 
 class EMATracker:
     def __init__(self, alpha: float = 0.05):
@@ -299,7 +293,7 @@ def run_model(model, x=None, add_batch_dimension=False):
 
     model.eval()
     with torch.no_grad():
-        return model(x)
+        return model(x).numpy()
 
 
 def create_data_module(x_train, y_train,

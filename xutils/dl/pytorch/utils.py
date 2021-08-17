@@ -31,6 +31,13 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
+def accuracy(logits, labels):
+    _, predicted = torch.max(logits.data, 1)
+    correct = (predicted == labels).sum().item()
+    accuracy = correct / len(labels)
+    return torch.tensor(accuracy)
+
+
 class TransferLearnModel(nn.Module):
     def __init__(self, original_model, num_classes, activation_fn=None, freeze_weights=True):
         super(TransferLearnModel, self).__init__()
