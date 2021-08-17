@@ -293,7 +293,7 @@ def test_model(model, x=None, y=None, trainer=None, data=None):
 
 def run_model(model, x=None, add_batch_dimension=False):
     if not isinstance(x, torch.Tensor):
-        x = torch.from_numpy(x)
+        x = torch.from_numpy(x).float()
     if add_batch_dimension:
         x = x.unsqueeze(0)
 
