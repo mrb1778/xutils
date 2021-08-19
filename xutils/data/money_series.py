@@ -251,7 +251,8 @@ def run_conditional(series: PandasMoneySeries,
                     sell_value=None,
                     cutoff=0.0,
                     quantity=1,
-                    threshold=0.0):
+                    threshold=0.0,
+                    threshold_column=None):
     if duration:
         values = series.get_delta(column=column, duration=duration, as_percent=as_percent)
     elif column is not None:
@@ -261,17 +262,20 @@ def run_conditional(series: PandasMoneySeries,
     else:
         raise Exception("Unknown data type")
 
+    threshold_values = series.get_value(column=threshold_column, offset=0, as_dict=True) \
+        if threshold_column is not None else None
+
     buys = []
     sells = []
     for key, value in values:
         if buy_value is not None or sell_value is not None:
-            if value == buy_value:
-                # series.trade(name=key, quantity=1, value=value)
-                buys.append({"name": key, "value": value})
-            elif value == sell_value:
-                # series.trade(key, -1, value=value)
-                sells.append({"name": key, "value": value})
-
+            if threshold_values is None or threshold_values[key] > threshold:
+                if value == buy_value:
+                    # series.trade(name=key, quantity=1, value=value)
+                    buys.append({"name": key, "value": value})
+                elif value == sell_value:
+                    # series.trade(key, -1, value=value)
+                    sells.append({"name": key, "value": value})
         elif value > cutoff + threshold:
             # series.trade(key, 1 if buy_high else -1, value=value)
             (buys if buy_high else sells).append({"name": key, "value": value})

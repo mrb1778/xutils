@@ -23,9 +23,8 @@ def list_files(path):
     return files
 
 
-def get_files(path, name_only=False):
-    files = list_files(path)
-    return [x if name_only else os.path.join(path, x) for x in files]
+def list_files(path, extension=None):
+    return glob.glob(path if extension is None else f'{path}/*.{extension}')
 
 
 def get_file_name(path, strip_extension=False):
