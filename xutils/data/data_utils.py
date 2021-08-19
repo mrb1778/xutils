@@ -253,14 +253,7 @@ class DataManager:
         if scaler is None:
             scaler = preprocessing.MinMaxScaler(feature_range=(0, 1))  # or StandardScaler?
             scaler.fit(self.x)
-
         self.x = scaler.transform(self.x)
-
-        if self.validation:
-            self.validation.x = scaler.transform(self.validation.x)
-        if self.test:
-            self.test.x = scaler.transform(self.test.x)
-
         self.history.append({"type": "scale_data", "scaler": scaler})
 
     def get_balanced_weights(self):
@@ -275,9 +268,7 @@ class DataManager:
     def select_top_features(self, num_top_features=0, top_features=None):
         if top_features is None:
             top_features = self.find_top_features(num_top_features)
-
         self.x = self.x[:, top_features]
-
         self.history.append({"type": "select_top_features", "top_features": top_features})
 
     def generate_unique_labels(self):
@@ -286,14 +277,8 @@ class DataManager:
 
     def encode_labels(self):
         label_encoder = preprocessing.OneHotEncoder(sparse=False, categories='auto')
-        self.y = label_encoder.fit_transform(self.y.reshape(-1, 1))
-
-        if self.validation:
-            self.validation.y = label_encoder.transform(self.validation.y.reshape(-1, 1))
-        if self.test:
-            self.test.y = label_encoder.transform(self.test.y.reshape(-1, 1))
-
         self.set_label_encoder(label_encoder)
+        self.y = label_encoder.fit_transform(self.y.reshape(-1, 1))
 
     def decode_labels(self, x):
         return self.label_encoder.inverse_transform(x)
@@ -308,29 +293,20 @@ class DataManager:
 
     def modify_x(self, modifier):
         self.x = modifier(self.x)
-        if self.validation:
-            self.validation.x = modifier(self.validation.x)
-        if self.test:
-            self.test.x = modifier(self.test.x)
 
     def modify_data(self, modifier):
         self.x, self.y = modifier(self.x, self.y)
-        if self.validation:
-            self.validation.x, self.validation.y = modifier(self.validation.x, self.validation.y)
-        if self.test:
-            self.test.x, self.test.y = modifier(self.test.x, self.test.y)
 
     def drop_columns(self, *columns):
         self.df.drop(columns=[*columns], inplace=True, errors='ignore')
-
         self.history.append({"type": "drop_columns", "args": columns})
 
     def data_from_column(self, start=None, end=None):
         data = self.df.loc[:, start:end]
         self.x = data.values
         self.labels = list(data.columns)
-        self.history.append({"type": "data_from_column", "start": start, "end": end})
         self.data_columns = list(data.columns)
+        self.history.append({"type": "data_from_column", "start": start, "end": end})
 
     def label_from_column(self, column):
         self.y = self.df[column].values

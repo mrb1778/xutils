@@ -242,14 +242,13 @@ def train_model(model,
                 dataset,
                 model_kwargs,
                 save_path,
-                save_prefix="checkpoint",
                 epochs=300):
     lightning_model_fn = wrap_model(model)
     lightning_model = lightning_model_fn(**model_kwargs)
 
     callback_checkpoint = ModelCheckpoint(monitor='val_loss',
                                           dirpath=save_path,
-                                          prefix=save_prefix)  # filename='image-analysis-{epoch:02d}-{val_loss:.2f}')
+                                          filename="checkpoint_{epoch:02d}_{val_acc:.2f}_{val_loss:.2f}")
     trainer = pl.Trainer(gpus=pyu.num_gpus(),
                          callbacks=[
                              # EarlyStopping(
