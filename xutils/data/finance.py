@@ -617,7 +617,7 @@ def get_buy_sell(df, threshold=0, buy_positive=True):
     def get_result(x):
         if x > threshold:
             return "BUY" if buy_positive else "SELL"
-        elif x < threshold:
+        elif x < -threshold:
             return "SELL" if buy_positive else "BUY"
         else:
             return "HOLD"
