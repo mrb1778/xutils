@@ -74,7 +74,7 @@ class WrapperModule(LightningModule):
         # self.log_dict(metrics)
         return {
             "val_loss": self.loss(y_hat, y),
-            "val_acc": pyu.accuracy(y_hat, y)
+            # "val_acc": pyu.accuracy(y_hat, y)
         }
 
     # noinspection PyMethodMayBeStatic
