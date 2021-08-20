@@ -1,5 +1,8 @@
+import os
+
 from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.loggers import TensorBoardLogger
 import pytorch_lightning as pl
 
 from torch.utils.data import DataLoader, Dataset
@@ -43,7 +46,7 @@ class WrapperModule(LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.model(x)
-        loss = self.calculate_loss(y_hat, y)
+        loss = self.loss(y_hat, y)
 
         return {'loss': loss, "log": batch_idx % self.trainer.accumulate_grad_batches == 0}
 
@@ -67,28 +70,34 @@ class WrapperModule(LightningModule):
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.model(x)
-        loss = self.calculate_loss(y_hat, y)
-        metrics = {'val_loss': loss}
-        self.log_dict(metrics)
-        return metrics
+
+        # self.log_dict(metrics)
+        return {
+            "val_loss": self.loss(y_hat, y),
+            "val_acc": pyu.accuracy(y_hat, y)
+        }
 
     # noinspection PyMethodMayBeStatic
     def validation_end(self, outputs):
-        avg_loss = torch.stack([x['batch_val_loss'] for x in outputs]).mean()
-        avg_acc = torch.stack([x['batch_val_acc'] for x in outputs]).mean()
+        print("validation_end", outputs[0].keys())
+        avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+        avg_acc = torch.stack([x['val_acc'] for x in outputs]).mean()
 
         return {
             'val_loss': avg_loss,
             'val_acc': avg_acc,
-            'progress_bar': {'val_loss': avg_loss, 'val_acc': avg_acc}}
+            'progress_bar': {'val_loss': avg_loss, 'val_acc': avg_acc}
+        }
 
     def test_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.model(x)
-        loss = self.calculate_loss(y_hat, y)
-        metrics = {'val_loss': loss}
-        self.log_dict(metrics)
-        return {'y_hat': y_hat, 'y': y, **metrics}
+        # self.log_dict(metrics)
+        return {
+            "y_hat": y_hat,
+            "y": y,
+            "val_loss": self.loss(y_hat, y)
+        }
 
     def test_epoch_end(self, outputs):
         y_hat = torch.cat([tmp['y_hat'] for tmp in outputs])
@@ -103,7 +112,7 @@ class WrapperModule(LightningModule):
         #
         # self.logger.experiment.add_figure("Confusion matrix", fig_, self.current_epoch)
 
-    def calculate_loss(self, y_hat, y):
+    def loss(self, y_hat, y):
         return self.loss_fn(y_hat, y)
 
 
@@ -273,7 +282,8 @@ def train_model(model,
                          ],
                          auto_lr_find=True,
                          auto_scale_batch_size=True,
-                         max_epochs=epochs)
+                         max_epochs=epochs,
+                         logger=TensorBoardLogger(os.path.join(save_path, 'tensorboard')))
     trainer.fit(lightning_model, datamodule=dataset)
 
     print("Best Model", callback_checkpoint.best_model_path)
