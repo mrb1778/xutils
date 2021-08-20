@@ -72,6 +72,16 @@ class WrapperModule(LightningModule):
         self.log_dict(metrics)
         return metrics
 
+    # noinspection PyMethodMayBeStatic
+    def validation_end(self, outputs):
+        avg_loss = torch.stack([x['batch_val_loss'] for x in outputs]).mean()
+        avg_acc = torch.stack([x['batch_val_acc'] for x in outputs]).mean()
+
+        return {
+            'val_loss': avg_loss,
+            'val_acc': avg_acc,
+            'progress_bar': {'val_loss': avg_loss, 'val_acc': avg_acc}}
+
     def test_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.model(x)
@@ -239,10 +249,14 @@ def wrap_model(base_model):
 
 
 def train_model(model,
-                dataset,
                 model_kwargs,
                 save_path,
+                dataset=None,
+                data_manager=None,
                 epochs=300):
+    if data_manager is not None:
+        dataset = create_data_module(data_manager=data_manager)
+
     lightning_model_fn = wrap_model(model)
     lightning_model = lightning_model_fn(**model_kwargs)
 
@@ -295,10 +309,19 @@ def run_model(model, x=None, add_batch_dimension=False):
         return model(x).numpy()
 
 
-def create_data_module(x_train, y_train,
-                       x_validation, y_validation,
-                       x_test, y_test,
+def create_data_module(x_train=None, y_train=None,
+                       x_validation=None, y_validation=None,
+                       x_test=None, y_test=None,
+                       data_manager: du.DataManager = None,
                        dataset_fn=None):
+    if data_manager is not None:
+        x_train = data_manager.x
+        y_train = data_manager.y
+        x_validation = data_manager.validation.x
+        y_validation = data_manager.validation.y
+        x_test = data_manager.test.x
+        y_test = data_manager.test.y
+
     if dataset_fn is None:
         dataset_fn = NumpyXYDataset
 
