@@ -208,13 +208,11 @@ class DataManager:
         with open(path, 'wb') as f:
             pickle.dump(self.history, f)
 
-    def persist_shape(self):
-        self.shape_x = self.x[0].shape
-        self.shape_y = len(np.unique(self.y))
-
-        self.history.append({"type": "set_shape", "x": self.shape_x, "y": self.shape_y})
-
     def set_shape(self, x=None, y=None):
+        if x is None and y is None:
+            x = self.x[0].shape
+            y = len(np.unique(self.y))
+
         self.shape_x = x
         self.shape_y = y
 
