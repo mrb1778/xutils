@@ -38,14 +38,13 @@ def get_balanced_weights(y):
     return sample_weights
 
 
-def compare_results(actual, predicted, print_results=True):
-    actual = np.argmax(actual, axis=1)
-    predicted = np.argmax(predicted, axis=1)
+def compare_results(actual, predicted, print_results=True, one_hot_encoded=True):
+    if one_hot_encoded:
+        actual = np.argmax(actual, axis=1)
+        predicted = np.argmax(predicted, axis=1)
 
     e = np.equal(actual, predicted)
     # todo: holds [2] is causing issues with data with output size of 2, prob meant for 3 --> take num / classes or calc
-    print("predicted", predicted)
-    print("-------size", len(np.unique(predicted, return_counts=True)[1]))
     # holds = np.unique(predicted, return_counts=True)[1][-1]
     # delta = (holds / len(predicted) * 100)
 
@@ -60,10 +59,6 @@ def compare_results(actual, predicted, print_results=True):
         print("Confusion Matrix\n", conf_mat)
         recall = []
         for i, row in enumerate(conf_mat):
-            print(
-                f"File: data_utils; Method: compare_results; Line: 59; Variable: np.round(row[i] = {np.round(row[i])}")
-            print(f"File: data_utils; Method: compare_results; Line: 59; Variable: np.sum(row) = {np.sum(row)}")
-
             recall.append(np.round(row[i] / np.sum(row), 2))
             print(f"Recall of class {i} = {recall[i]}")
         print("Recall avg", sum(recall) / len(recall))
