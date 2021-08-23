@@ -49,6 +49,8 @@ def compare_results(actual, predicted, print_results=True, one_hot_encoded=True)
     # delta = (holds / len(predicted) * 100)
 
     if print_results:
+        print("Shapes", actual.shape, predicted.shape)
+        print("First", actual[0], predicted[0])
         print("Size", len(actual))
         print("Match", np.unique(predicted[e], return_counts=True))
         print("Base", np.unique(actual, return_counts=True))
