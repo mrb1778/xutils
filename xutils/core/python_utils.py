@@ -36,11 +36,17 @@ def getattr_ignore_case(obj, attr: str):
             return getattr(obj, a)
 
 
-def print_dict(results, sort_on=None):
+def print_dicts(dicts, sort_on=None):
     if sort_on is not None:
-        results = sorted(results, key=lambda entry: entry[sort_on], reverse=True)
-    header = results[0].keys()
-    rows = [x.values() for x in results]
+        dicts = sorted(dicts, key=lambda entry: entry[sort_on], reverse=True)
+    header = dicts[0].keys()
+    rows = [x.values() for x in dicts]
     output = tabulate.tabulate(rows, header)
+    print(output)
+    return output
+
+
+def print_dict(dict_:dict, key_header="Key", value_header="Value"):
+    output = tabulate.tabulate(dict_.items(), [key_header, value_header])
     print(output)
     return output
