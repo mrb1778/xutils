@@ -3,6 +3,7 @@ import os
 from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.metrics import Precision, Recall, Accuracy
 import pytorch_lightning as pl
 
 from torch.utils.data import DataLoader, Dataset
@@ -15,7 +16,7 @@ import xutils.dl.pytorch.utils as pyu
 
 
 class WrapperModule(LightningModule):
-    def __init__(self, wrapped, learning_rate, loss_fn=None):
+    def __init__(self, wrapped, learning_rate, loss_fn=None, num_classes=None):
         super(WrapperModule, self).__init__()
         self.model = wrapped
         self.model.to(self.device)
@@ -34,6 +35,11 @@ class WrapperModule(LightningModule):
             self.loss_fn = getattr_ignore_case(F, loss_fn)
         else:
             self.loss_fn = loss_fn
+
+        if num_classes is not None:
+            self.precision = Precision(num_classes)
+            self.recall = Recall(num_classes)
+        self.accuracy = Accuracy()
 
         self.train_loss_tracker = EMATracker(alpha=0.02)
 
@@ -72,11 +78,16 @@ class WrapperModule(LightningModule):
         y_hat = self.model(x)
 
         # self.log_dict(metrics)
-        return {
+        metrics = {
             "val_loss": self.loss(y_hat, y),
-            "val_acc": 0.5  # todo: fix
-            # "val_acc": pyu.accuracy(y_hat, y)
+            "val_acc": self.accuracy(y_hat, y)
         }
+        if self.recall:
+            metrics["recall"] = self.recall(y_hat, y)
+        if self.precision:
+            metrics["precision"] = self.precision(y_hat, y)
+
+        return metrics
 
     # noinspection PyMethodMayBeStatic
     def validation_end(self, outputs):
@@ -252,8 +263,12 @@ def load_model(model_or_class, path, model_kwargs, wrap=False):
 
 def wrap_model(base_model):
     class WrapperModuleChild(WrapperModule):
-        def __init__(self, learning_rate, loss_fn=None):
-            super(WrapperModuleChild, self).__init__(base_model, learning_rate, loss_fn)
+        def __init__(self, learning_rate, loss_fn=None, num_classes=None):
+            super(WrapperModuleChild, self).__init__(
+                base_model,
+                learning_rate,
+                loss_fn=loss_fn,
+                num_classes=num_classes)
 
     return WrapperModuleChild
 

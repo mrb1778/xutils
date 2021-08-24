@@ -32,7 +32,7 @@ def count_parameters(model):
 
 
 def accuracy(logits, labels):
-    _, predicted = torch.max(logits.data, 1)
+    _, predicted = torch.max(logits, 1)
     correct = (predicted == labels).sum().item()
     accuracy = correct / len(labels)
     return torch.tensor(accuracy)
