@@ -36,9 +36,9 @@ class WrapperModule(LightningModule):
         else:
             self.loss_fn = loss_fn
 
-        if num_classes is not None:
-            self.precision = Precision(num_classes)
-            self.recall = Recall(num_classes)
+        # if num_classes is not None:
+        #     self.precision = Precision(num_classes)
+        #     self.recall = Recall(num_classes)
         self.accuracy = Accuracy()
 
         self.train_loss_tracker = EMATracker(alpha=0.02)
@@ -82,10 +82,10 @@ class WrapperModule(LightningModule):
             "val_loss": self.loss(y_hat, y),
             "val_acc": self.accuracy(y_hat, y)
         }
-        if self.recall:
-            metrics["recall"] = self.recall(y_hat, y)
-        if self.precision:
-            metrics["precision"] = self.precision(y_hat, y)
+        # if self.recall:
+        #     metrics["recall"] = self.recall(y_hat, y)
+        # if self.precision:
+        #     metrics["precision"] = self.precision(y_hat, y)
 
         return metrics
 
