@@ -114,7 +114,10 @@ class WrapperModule(LightningModule):
     def test_epoch_end(self, outputs):
         y_hat = torch.cat([tmp['y_hat'] for tmp in outputs])
         y = torch.cat([tmp['y'] for tmp in outputs])
-        du.compare_results(y_hat.cpu().numpy(), y.cpu().numpy())
+        du.compare_results(actual=y_hat.cpu().numpy(),
+                           actual_hot_encoded=True,
+                           predicted=y.cpu().numpy(),
+                           predicted_hot_encoded=True)
         # confusion_matrix = pl.metrics.functional.confusion_matrix(preds, targets, num_classes=10)
         #
         # df_cm = pd.DataFrame(confusion_matrix.numpy(), index=range(10), columns=range(10))
@@ -325,6 +328,9 @@ def test_model(model, x=None, y=None, trainer=None, data=None):
 
 
 def run_model(model, x=None, add_batch_dimension=False):
+    if isinstance(x, du.DataManager):
+        x = x.x
+
     if not isinstance(x, torch.Tensor):
         x = torch.from_numpy(x).float()
     if add_batch_dimension:

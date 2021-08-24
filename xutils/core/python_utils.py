@@ -46,7 +46,7 @@ def print_dicts(dicts, sort_on=None):
     return output
 
 
-def print_dict(dict_:dict, key_header="Key", value_header="Value"):
-    output = tabulate.tabulate(dict_.items(), [key_header, value_header])
+def print_dict(d: dict, key_header="Key", value_header="Value"):
+    output = tabulate.tabulate(d.items(), [key_header, value_header])
     print(output)
     return output

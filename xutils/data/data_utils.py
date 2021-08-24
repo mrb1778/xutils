@@ -12,6 +12,7 @@ import pandas as pd
 
 import xutils.core.python_utils as pu
 import xutils.core.file_utils as fu
+import xutils.data.numpy_utils as nu
 
 
 def set_random_seed(seed=1235):
@@ -60,14 +61,14 @@ def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_e
     # delta = (holds / len(predicted) * 100)
 
     results = {
-        "Actual Shape": actual.shape,
-        "Predicted Shape": predicted.shape,
-        "First Actual": actual[0],
-        "Predicted Actual": predicted[0],
         "Size": len(actual),
-        "Match": np.unique(predicted[e], return_counts=True),
-        "Base": np.unique(actual, return_counts=True),
-        "Test": np.unique(predicted, return_counts=True),
+        # "Actual Shape": actual.shape,
+        # "Predicted Shape": predicted.shape,
+        "First 5 Actual": actual[0:5],
+        "First 5 Predicted": predicted[0:5],
+        "Base": nu.count_unique(actual),
+        "Match": nu.count_unique(predicted[e]),
+        "Test": nu.count_unique(predicted),
         "Accuracy": skm.accuracy_score(actual, predicted),
         "Delta": "N/A",
         "F1 score (weighted)": skm.f1_score(actual, predicted, labels=None,
@@ -82,14 +83,13 @@ def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_e
 
     conf_mat = skm.confusion_matrix(actual, predicted)
     results["Confusion Matrix"] = conf_mat
-    print("Confusion Matrix\n", conf_mat)
     recall = []
     for i, row in enumerate(conf_mat):
         recall.append(np.round(row[i] / np.sum(row), 2))
         results[f"Recall {i}"] = recall[i]
     results["Recall Average"] = sum(recall) / len(recall)
 
-    print("Results")
+    print("----Compare Results----")
     pu.print_dict(results)
     return results
 
@@ -197,9 +197,13 @@ class DataManager:
         else:
             raise Exception("Data loader not set")
 
-    def load_config(self, path):
+    def load_config(self, path, play=True):
         with open(path, 'rb') as f:
-            self.set_config(pickle.load(f))
+            history = pickle.load(f)
+            if play:
+                self.set_config(history)
+            else:
+                self.history = history
 
     def set_config(self, config):
         for config_item in config:
@@ -216,6 +220,12 @@ class DataManager:
             else:
                 print("set_config", type_, "kwargs", config_item)
                 data_fn(**config_item)
+
+    def replay_config(self):
+        old_history = self.history
+        self.history = []
+        
+        self.set_config(old_history)
 
     def dump_config(self, path):
         fu.create_parent_dirs(path)

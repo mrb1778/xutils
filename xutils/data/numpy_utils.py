@@ -136,3 +136,7 @@ def umeyama(src, dst, estimate_scale):
     T[:dim, :dim] *= scale
 
     return T
+
+
+def count_unique(d):
+    return dict(zip(*np.unique(d, return_counts=True)))
