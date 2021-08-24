@@ -89,7 +89,8 @@ def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_e
         results[f"Recall {i}"] = recall[i]
     results["Recall Average"] = sum(recall) / len(recall)
 
-    print("Results", pu.print_dict(results))
+    print("Results")
+    pu.print_dict(results)
     return results
 
 
