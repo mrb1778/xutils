@@ -74,6 +74,7 @@ class WrapperModule(LightningModule):
         # self.log_dict(metrics)
         return {
             "val_loss": self.loss(y_hat, y),
+            "val_acc": 0.5  # todo: fix
             # "val_acc": pyu.accuracy(y_hat, y)
         }
 
@@ -327,16 +328,19 @@ def create_data_module(x_train=None, y_train=None,
     if data_manager is not None:
         x_train = data_manager.x
         y_train = data_manager.y
-        x_validation = data_manager.validation.x
-        y_validation = data_manager.validation.y
-        x_test = data_manager.test.x
-        y_test = data_manager.test.y
+        if data_manager.validation is not None and data_manager.validation.x is not None:
+            x_validation = data_manager.validation.x
+            y_validation = data_manager.validation.y
+
+        if data_manager.test is not None and data_manager.test.x is not None:
+            x_test = data_manager.test.x
+            y_test = data_manager.test.y
 
     if dataset_fn is None:
         dataset_fn = NumpyXYDataset
 
     return DatasetDataModule(
         train_dataset=dataset_fn(x_train, y_train),
-        test_dataset=dataset_fn(x_test, y_test),
-        val_dataset=dataset_fn(x_validation, y_validation)
+        test_dataset=dataset_fn(x_test, y_test) if x_test is not None else None,
+        val_dataset=dataset_fn(x_validation, y_validation) if x_validation is not None else None
     )

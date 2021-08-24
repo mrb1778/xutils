@@ -4,12 +4,13 @@ import sklearn.metrics as skm
 from sklearn.model_selection import train_test_split
 import sklearn.preprocessing as preprocessing
 from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
-import json
 import pickle
 from operator import itemgetter
 import os
 import random as rn
+import pandas as pd
 
+import xutils.core.python_utils as pu
 import xutils.core.file_utils as fu
 
 
@@ -38,43 +39,58 @@ def get_balanced_weights(y):
     return sample_weights
 
 
-def compare_results(actual, predicted, print_results=True, one_hot_encoded=True):
-    if one_hot_encoded:
+def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_encoded=False):
+    if actual_hot_encoded:
         actual = np.argmax(actual, axis=1)
+    if predicted_hot_encoded:
         predicted = np.argmax(predicted, axis=1)
+
+    if isinstance(actual, pd.DataFrame) or isinstance(actual, pd.Series):
+        actual = actual.values
+    if isinstance(predicted, pd.DataFrame) or isinstance(predicted, pd.Series):
+        predicted = predicted.values
+    if actual.ndim > 1:
+        actual = actual.ravel()
+    if predicted.ndim > 1:
+        predicted = predicted.ravel()
 
     e = np.equal(actual, predicted)
     # todo: holds [2] is causing issues with data with output size of 2, prob meant for 3 --> take num / classes or calc
     # holds = np.unique(predicted, return_counts=True)[1][-1]
     # delta = (holds / len(predicted) * 100)
 
-    if print_results:
-        print("Shapes", actual.shape, predicted.shape)
-        print("First", actual[0], predicted[0])
-        print("Size", len(actual))
-        print("Match", np.unique(predicted[e], return_counts=True))
-        print("Base", np.unique(actual, return_counts=True))
-        print("Test", np.unique(predicted, return_counts=True))
-        # print("Delta", delta)
+    results = {
+        "Actual Shape": actual.shape,
+        "Predicted Shape": predicted.shape,
+        "First Actual": actual[0],
+        "Predicted Actual": predicted[0],
+        "Size": len(actual),
+        "Match": np.unique(predicted[e], return_counts=True),
+        "Base": np.unique(actual, return_counts=True),
+        "Test": np.unique(predicted, return_counts=True),
+        "Accuracy": skm.accuracy_score(actual, predicted),
+        "Delta": "N/A",
+        "F1 score (weighted)": skm.f1_score(actual, predicted, labels=None,
+                                            average='weighted', sample_weight=None),
+        "F1 score (macro)": skm.f1_score(actual, predicted, labels=None,
+                                         average='macro', sample_weight=None),
+        "F1 score (micro)": skm.f1_score(actual, predicted, labels=None,
+                                         average='micro',
+                                         sample_weight=None),  # weighted and micro preferred in case of imbalance
+        "Cohen's Kappa": skm.cohen_kappa_score(actual, predicted),
+    }
 
-        conf_mat = skm.confusion_matrix(actual, predicted)
-        print("Confusion Matrix\n", conf_mat)
-        recall = []
-        for i, row in enumerate(conf_mat):
-            recall.append(np.round(row[i] / np.sum(row), 2))
-            print(f"Recall of class {i} = {recall[i]}")
-        print("Recall avg", sum(recall) / len(recall))
+    conf_mat = skm.confusion_matrix(actual, predicted)
+    results["Confusion Matrix"] = conf_mat
+    print("Confusion Matrix\n", conf_mat)
+    recall = []
+    for i, row in enumerate(conf_mat):
+        recall.append(np.round(row[i] / np.sum(row), 2))
+        results[f"Recall {i}"] = recall[i]
+    results["Recall Average"] = sum(recall) / len(recall)
 
-        print("F1 score (weighted)", skm.f1_score(actual, predicted, labels=None,
-                                                  average='weighted', sample_weight=None))
-        print("F1 score (macro)", skm.f1_score(actual, predicted, labels=None,
-                                               average='macro', sample_weight=None))
-        print("F1 score (micro)", skm.f1_score(actual, predicted, labels=None,
-                                               average='micro',
-                                               sample_weight=None))  # weighted and micro preferred in case of imbalance
-        print("Cohen's Kappa", skm.cohen_kappa_score(actual, predicted))
-
-    # return delta
+    print("Results", pu.print_dict(results))
+    return results
 
 
 def split_data(x, y, train_split=0.8, scale=False):
@@ -226,9 +242,6 @@ class DataManager:
         return self._split(self.test, split)
 
     def split_validation(self, train_split=0.8):
-        if self.test is None:
-            raise Exception("Must Split Train 1st")
-
         self.validation = DataManager()
         return self._split(self.validation, train_split)
 
