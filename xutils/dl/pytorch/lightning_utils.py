@@ -80,7 +80,7 @@ class WrapperModule(LightningModule):
         # self.log_dict(metrics)
         metrics = {
             "val_loss": self.loss(y_hat, y),
-            "val_acc": self.accuracy(y_hat, y)
+            "val_acc": self.accuracy(y_hat, torch.argmax(y.squeeze(), dim=1))
         }
         # if self.recall:
         #     metrics["recall"] = self.recall(y_hat, y)
