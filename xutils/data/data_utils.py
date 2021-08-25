@@ -247,13 +247,13 @@ class DataManager:
         else:
             raise Exception("Data loader not set")
 
-    def split_train(self, split=0.8):
+    def split_test(self, split=0.8):
         self.test = DataManager()
         return self._split(self.test, split)
 
-    def split_validation(self, train_split=0.8):
+    def split_validation(self, split=0.8):
         self.validation = DataManager()
-        return self._split(self.validation, train_split)
+        return self._split(self.validation, split)
 
     def _split(self, data_set, split=0.8):
         self.x, data_set.x, self.y, data_set.y = train_test_split(

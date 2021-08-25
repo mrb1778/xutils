@@ -311,8 +311,9 @@ def train_model(model,
                             path=callback_checkpoint.best_model_path,
                             model_kwargs=model_kwargs)
 
-    results = trainer.test(best_model, datamodule=dataset)
-    print("Test Results", results)
+    if dataset.test_dataset is not None:
+        results = trainer.test(best_model, datamodule=dataset)
+        print("Test Results", results)
 
     return best_model
 
