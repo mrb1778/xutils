@@ -218,7 +218,6 @@ class DataManager:
                 del config_item["args"]
                 data_fn(*args)
             else:
-                print("set_config", type_, "kwargs", config_item)
                 data_fn(**config_item)
 
     def replay_config(self):
