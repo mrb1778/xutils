@@ -290,7 +290,7 @@ def train_model(model,
 
     callback_checkpoint = ModelCheckpoint(monitor='val_loss',
                                           dirpath=save_path,
-                                          filename="checkpoint_{epoch:02d}_{val_acc:.2f}_{val_loss:.2f}")
+                                          filename="checkpoint-{val_acc:.2f}-{val_loss:.2f}-{epoch:02d}")
     trainer = pl.Trainer(gpus=pyu.num_gpus(),
                          callbacks=[
                              # EarlyStopping(

@@ -1,4 +1,6 @@
 import glob
+
+import operator
 import os
 import shutil
 import tarfile
@@ -14,17 +16,16 @@ def path_inspect(path, search="*", trim_path=True):
         print(str(file_name)[len(path) + 1:] if trim_path else file_name)
 
 
-def list_files(path):
-    files = []
-    for (dir_path, dir_names, file_names) in os.walk(path):
-        files.extend(file_names)
-        break
-
-    return files
-
-
-def list_files(path, extension=None):
-    return glob.glob(path if extension is None else f'{path}/*.{extension}')
+def list_files(path, extension=None, sort_name=True, sort_size=False, sort_updated=False):
+    files = glob.glob(path if extension is None else f'{path}/*.{extension}')
+    if sort_name or sort_size or sort_updated:
+        return sorted(files, key=lambda x: (
+            x if sort_name else None,
+            os.path.getsize(x) if sort_size else None,
+            os.path.getmtime(x) if sort_updated else None,
+        ))
+    else:
+        return files
 
 
 def get_file_name(path, strip_extension=False):
