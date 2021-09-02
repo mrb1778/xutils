@@ -613,20 +613,14 @@ def get_delta_percent(df, interval=1, col_name="close"):
     return df[col_name].pct_change(periods=interval).replace(np.nan, 0)
 
 
-def get_buy_sell(df, threshold=0, buy_positive=True):
+def get_buy_sell(df, threshold=0, buy_positive=True, non_threshold="HOLD"):
     def get_result(x):
         if x > threshold:
             return "BUY" if buy_positive else "SELL"
         elif x < -threshold:
             return "SELL" if buy_positive else "BUY"
         else:
-            return "HOLD"
-        # if x == 0:
-        #     return HOLD
-        # elif x > 0:
-        #     return BUY if buy_positive else SELL
-        # elif x < 0:
-        #     return SELL if buy_positive else BUY
+            return non_threshold
 
     return df.apply(get_result)
 
