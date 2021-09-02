@@ -17,7 +17,7 @@ def path_inspect(path, search="*", trim_path=True):
 
 
 def list_files(path, extension=None, sort_name=True, sort_size=False, sort_updated=False):
-    files = glob.glob(path if extension is None else f'{path}/*.{extension}')
+    files = glob.glob(path if extension is None else os.path.join(path, f"*.{extension}"))
     if sort_name or sort_size or sort_updated:
         return sorted(files, key=lambda x: (
             x if sort_name else None,
