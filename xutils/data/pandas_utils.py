@@ -249,3 +249,7 @@ def enrich_data(root_path,
         return path
 
     return fu.create_file_if(data_path, enrich_fn_wrapper, update)
+
+
+def rows_cols(df, row_start, row_end=None, cols=None):
+    return df.iloc[row_start:row_end, [df.columns.get_loc(column) for column in cols]]
