@@ -610,7 +610,7 @@ def get_delta_percent(df, interval=1, col_name="close"):
       next_day - prev_day
     ((s - s.shift()) > 0).astype(np.int)
     """
-    return df[col_name].pct_change(periods=interval).replace(np.nan, 0)
+    return df[col_name].pct_change(periods=interval)
 
 
 def get_buy_sell(df, threshold=0, buy_positive=True, non_threshold="HOLD"):

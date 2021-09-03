@@ -11,22 +11,27 @@ def read(*paths) -> pd.DataFrame:
 
 def write(df: pd.DataFrame, path):
     df.to_csv(path, index=False)
+    return df
 
 
 def cast_to_int(df: pd.DataFrame, *columns):
     cast_to(df, 'int', *columns)
+    return df
 
 
 def cast_to_float(df: pd.DataFrame, *columns):
     cast_to(df, 'float', *columns)
+    return df
 
 
 def cast_to_float32(df: pd.DataFrame, *columns):
     cast_to(df, 'float32', *columns)
+    return df
 
 
 def cast_to_date(df: pd.DataFrame, *columns):
     cast_to(df, 'date', *columns)
+    return df
 
 
 def cast_to(df: pd.DataFrame, cast_type, *columns):
@@ -37,11 +42,13 @@ def cast_to(df: pd.DataFrame, cast_type, *columns):
             df[column] = pd.to_datetime(df_column)
         else:
             df[column] = df_column.astype(cast_type)
+    return df
                     
 
 def normalize_max(df: pd.DataFrame, *columns):
     for column in columns:
         df[column] = df[column] / max(df[column])
+    return df
 
 
 def fill_with_greater_than(df: pd.DataFrame, find_column, find_value, value_column, cutoff_value, *fields):
@@ -49,6 +56,7 @@ def fill_with_greater_than(df: pd.DataFrame, find_column, find_value, value_colu
     for field in fields:
         df.loc[(df[find_column] == find_value) &
                (df[value_column] > cutoff_value), field] = query_data[value_column].values[0]
+    return df
 
 
 def fill_null(df: pd.DataFrame, *columns, default_value=0,
@@ -74,6 +82,7 @@ def fill_null(df: pd.DataFrame, *columns, default_value=0,
 
         # column_values = df[column]
         # df.loc[column_values.isnull(), column] = default_value
+    return df
 
 
 def find_null(df: pd.DataFrame, null_column, return_column):
@@ -122,6 +131,7 @@ def describe_data(df: pd.DataFrame):
     print("number of null values present in each column")
     print(df.isnull().sum())
     print(df.head(5))
+    return df
 
 
 def root_mean_squared_error(value, predicted):
@@ -151,6 +161,7 @@ def get_column_index(df: pd.DataFrame, column):
 def print_all(df: pd.DataFrame):
     with pd.option_context('display.max_rows', None, 'display.max_columns', None):
         print(df)
+    return df
 
 
 def drop_na(df: pd.DataFrame, verbose=False):
@@ -158,6 +169,7 @@ def drop_na(df: pd.DataFrame, verbose=False):
         print(df.isna().sum())
     df.dropna(inplace=True)
     df.reset_index(drop=True, inplace=True)
+    return df
 
 
 def sort(df: pd.DataFrame, column, set_index=False, asc=True):
@@ -167,6 +179,7 @@ def sort(df: pd.DataFrame, column, set_index=False, asc=True):
     else:
         df.sort_values(column, inplace=True, ascending=asc)
         df.reset_index(drop=True, inplace=True)
+    return df
 
 
 def reduce_memory_usage(df: pd.DataFrame, verbose=False):
@@ -222,12 +235,14 @@ def get_correlation(df, d1, d2, spearman=False, kendall=False, verbose=False):
 
 def lower_case_columns(df):
     df.columns = df.columns.str.lower()
+    return df
 
 
 def add_calc_column(df, column_name, calc_fn, cleanup=False):
     df[column_name] = calc_fn(df)
     if cleanup:
         drop_na(df)
+    return df
 
 
 def enrich_data(root_path,
