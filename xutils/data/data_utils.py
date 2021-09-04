@@ -202,6 +202,7 @@ class DataManager:
     def load_config(self, path, play=True):
         with open(path, 'rb') as config_file:
             config = pickle.load(config_file)
+            print("load_config", config)
             self.play_config(config["properties"])
 
             self.loaded_data_config = config["data"]
