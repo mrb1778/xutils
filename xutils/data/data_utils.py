@@ -189,7 +189,9 @@ class DataManager:
         self.shape_x = None
         self.shape_y = None
 
-        self.history = []
+        self.property_config = []
+        self.data_config = []
+        self.data_config_archive = []
 
     def load_data(self, *args, **kwargs):
         if self.data_loader is not None:
@@ -199,13 +201,14 @@ class DataManager:
 
     def load_config(self, path, play=True):
         with open(path, 'rb') as f:
-            history = pickle.load(f)
-            if play:
-                self.set_config(history)
-            else:
-                self.history = history
+            config = pickle.load(f)
+            self.play_config(config["properties"])
 
-    def set_config(self, config):
+            self.data_config_archive = config["data"]
+            if play:
+                self.play_config(self.data_config_archive)
+
+    def play_config(self, config):
         for config_item in config:
             type_ = config_item["type"]
             data_fn = getattr(self, type_)
@@ -221,15 +224,16 @@ class DataManager:
                 data_fn(**config_item)
 
     def replay_config(self):
-        old_history = self.history
-        self.history = []
-        
-        self.set_config(old_history)
+        self.data_config = []
+        self.play_config(self.data_config_archive)
 
     def dump_config(self, path):
         fu.create_parent_dirs(path)
-        with open(path, 'wb') as f:
-            pickle.dump(self.history, f)
+        with open(path, 'wb') as config_file:
+            pickle.dump({
+                "properties": self.property_config,
+                "data": self.data_config
+            }, config_file)
 
     def set_shape(self, x=None, y=None):
         if x is None and y is None:
@@ -239,7 +243,7 @@ class DataManager:
         self.shape_x = x
         self.shape_y = y
 
-        self.history.append({"type": "set_shape", "x": self.shape_x, "y": self.shape_y})
+        self.property_config.append({"type": "set_shape", "x": self.shape_x, "y": self.shape_y})
 
     def enrich_data(self, *args, **kwargs):
         if self.data_enricher is not None:
@@ -272,7 +276,7 @@ class DataManager:
             scaler = preprocessing.MinMaxScaler(feature_range=(0, 1))  # or StandardScaler?
             scaler.fit(self.x)
         self.x = scaler.transform(self.x)
-        self.history.append({"type": "scale_data", "scaler": scaler})
+        self.data_config.append({"type": "scale_data", "scaler": scaler})
 
     def get_balanced_weights(self):
         return get_balanced_weights(self.y)
@@ -287,7 +291,7 @@ class DataManager:
         if top_features is None:
             top_features = self.find_top_features(num_top_features)
         self.x = self.x[:, top_features]
-        self.history.append({"type": "select_top_features", "top_features": top_features})
+        self.data_config.append({"type": "select_top_features", "top_features": top_features})
 
     def generate_unique_labels(self):
         self.labels = np.unique(self.y, return_counts=False)
@@ -303,11 +307,11 @@ class DataManager:
 
     def set_label_encoder(self, label_encoder=None):
         self.label_encoder = label_encoder
-        self.history.append({"type": "set_label_encoder", "label_encoder": label_encoder})
+        self.data_config.append({"type": "set_label_encoder", "label_encoder": label_encoder})
 
     def reshape(self, size=None):
         self.x = self.x.reshape(*size)
-        self.history.append({"type": "reshape", "size": size})
+        self.data_config.append({"type": "reshape", "size": size})
 
     def modify_x(self, modifier):
         self.x = modifier(self.x)
@@ -317,15 +321,15 @@ class DataManager:
 
     def drop_columns(self, *columns):
         self.df.drop(columns=[*columns], inplace=True, errors='ignore')
-        self.history.append({"type": "drop_columns", "args": columns})
+        self.data_config.append({"type": "drop_columns", "args": columns})
 
     def data_from_column(self, start=None, end=None):
         data = self.df.loc[:, start:end]
         self.x = data.values
         self.labels = list(data.columns)
         self.data_columns = list(data.columns)
-        self.history.append({"type": "data_from_column", "start": start, "end": end})
+        self.data_config.append({"type": "data_from_column", "start": start, "end": end})
 
     def label_from_column(self, column):
         self.y = self.df[column].values
-        self.history.append({"type": "label_from_column", "column": column})
+        self.data_config.append({"type": "label_from_column", "column": column})
