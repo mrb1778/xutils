@@ -191,7 +191,7 @@ class DataManager:
 
         self.property_config = []
         self.data_config = []
-        self.data_config_archive = []
+        self.loaded_data_config = []
 
     def load_data(self, *args, **kwargs):
         if self.data_loader is not None:
@@ -200,13 +200,13 @@ class DataManager:
             raise Exception("Data loader not set")
 
     def load_config(self, path, play=True):
-        with open(path, 'rb') as f:
-            config = pickle.load(f)
+        with open(path, 'rb') as config_file:
+            config = pickle.load(config_file)
             self.play_config(config["properties"])
 
-            self.data_config_archive = config["data"]
+            self.loaded_data_config = config["data"]
             if play:
-                self.play_config(self.data_config_archive)
+                self.play_config(self.loaded_data_config)
 
     def play_config(self, config):
         for config_item in config:
@@ -224,8 +224,9 @@ class DataManager:
                 data_fn(**config_item)
 
     def replay_config(self):
+        print("replay", self.loaded_data_config)
         self.data_config = []
-        self.play_config(self.data_config_archive)
+        self.play_config(self.loaded_data_config)
 
     def dump_config(self, path):
         fu.create_parent_dirs(path)
