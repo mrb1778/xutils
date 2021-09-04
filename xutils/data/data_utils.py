@@ -202,7 +202,6 @@ class DataManager:
     def load_config(self, path, play=True):
         with open(path, 'rb') as config_file:
             config = pickle.load(config_file)
-            print("load_config", config)
             self.play_config(config["properties"])
 
             self.loaded_data_config = config["data"]
@@ -215,17 +214,15 @@ class DataManager:
             data_fn = getattr(self, type_)
             if data_fn is None:
                 raise Exception("Can not load config, can not invoke", type_)
-            del config_item["type"]
 
             if "args" in config_item:
-                args = config_item["args"]
-                del config_item["args"]
-                data_fn(*args)
+                data_fn(*config_item["args"])
+            elif "kwargs" in config_item:
+                data_fn(**config_item["kwargs"])
             else:
-                data_fn(**config_item)
+                data_fn()
 
     def replay_config(self):
-        print("replay", self.loaded_data_config)
         self.data_config = []
         self.play_config(self.loaded_data_config)
 
@@ -245,7 +242,7 @@ class DataManager:
         self.shape_x = x
         self.shape_y = y
 
-        self.property_config.append({"type": "set_shape", "x": self.shape_x, "y": self.shape_y})
+        self.property_config.append({"type": "set_shape", "kwargs": {"x": self.shape_x, "y": self.shape_y}})
 
     def enrich_data(self, *args, **kwargs):
         if self.data_enricher is not None:
@@ -278,7 +275,7 @@ class DataManager:
             scaler = preprocessing.MinMaxScaler(feature_range=(0, 1))  # or StandardScaler?
             scaler.fit(self.x)
         self.x = scaler.transform(self.x)
-        self.data_config.append({"type": "scale_data", "scaler": scaler})
+        self.data_config.append({"type": "scale_data", "kwargs": {"scaler": scaler}})
 
     def get_balanced_weights(self):
         return get_balanced_weights(self.y)
@@ -293,7 +290,7 @@ class DataManager:
         if top_features is None:
             top_features = self.find_top_features(num_top_features)
         self.x = self.x[:, top_features]
-        self.data_config.append({"type": "select_top_features", "top_features": top_features})
+        self.data_config.append({"type": "select_top_features", "kwargs": {"top_features": top_features}})
 
     def generate_unique_labels(self):
         self.labels = np.unique(self.y, return_counts=False)
@@ -309,11 +306,11 @@ class DataManager:
 
     def set_label_encoder(self, label_encoder=None):
         self.label_encoder = label_encoder
-        self.data_config.append({"type": "set_label_encoder", "label_encoder": label_encoder})
+        self.data_config.append({"type": "set_label_encoder", "kwargs": {"label_encoder": label_encoder}})
 
     def reshape(self, size=None):
         self.x = self.x.reshape(*size)
-        self.data_config.append({"type": "reshape", "size": size})
+        self.data_config.append({"type": "reshape", "kwargs": {"size": size}})
 
     def modify_x(self, modifier):
         self.x = modifier(self.x)
@@ -330,8 +327,8 @@ class DataManager:
         self.x = data.values
         self.labels = list(data.columns)
         self.data_columns = list(data.columns)
-        self.data_config.append({"type": "data_from_column", "start": start, "end": end})
+        self.data_config.append({"type": "data_from_column", "kwargs": {"start": start, "end": end}})
 
     def label_from_column(self, column):
         self.y = self.df[column].values
-        self.data_config.append({"type": "label_from_column", "column": column})
+        self.data_config.append({"type": "label_from_column", "kwargs": {"column": column}})
