@@ -331,4 +331,5 @@ class DataManager:
 
     def label_from_column(self, column):
         self.y = self.df[column].values
-        self.data_config.append({"type": "label_from_column", "kwargs": {"column": column}})
+        # todo: determine if need to track history for further training processing? dont need for value processing
+        # self.data_config.append({"type": "label_from_column", "kwargs": {"column": column}})
