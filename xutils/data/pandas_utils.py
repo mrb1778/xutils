@@ -10,6 +10,7 @@ def read(*paths) -> pd.DataFrame:
 
 
 def write(df: pd.DataFrame, path):
+    fu.create_parent_dirs(path)
     df.to_csv(path, index=False)
     return df
 
