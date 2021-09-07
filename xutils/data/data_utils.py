@@ -223,6 +223,9 @@ class DataManager:
                 data_fn()
 
     def replay_config(self):
+        if self.loaded_data_config is None:
+            self.loaded_data_config = self.data_config
+
         self.data_config = []
         self.play_config(self.loaded_data_config)
 
