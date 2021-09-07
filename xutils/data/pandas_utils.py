@@ -268,3 +268,7 @@ def enrich_data(root_path,
 
 def rows_cols(df, row_start, row_end=None, cols=None):
     return df.iloc[row_start:row_end, [df.columns.get_loc(column) for column in cols]]
+
+
+def cols(df, *cols):
+    return df.loc[:, cols]
