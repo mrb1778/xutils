@@ -138,12 +138,19 @@ def umeyama(src, dst, estimate_scale):
     return T
 
 
-def count_unique(d):
-    return dict(zip(*np.unique(d, return_counts=True)))
+def count_unique(x):
+    return dict(zip(*np.unique(x, return_counts=True)))
 
 
-def count_nan(d):
-    return np.count_nonzero(np.isnan(d))
+def count_nan(x):
+    return np.count_nonzero(np.isnan(x))
+
+
+def remove_nan(x, replace_with=None):
+    if replace_with is not None:
+        return np.where(np.isfinite(x), x, replace_with)
+    else:
+        return x[~np.isnan(x)]
 
 
 def print_all(d):
