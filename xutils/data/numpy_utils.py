@@ -140,3 +140,12 @@ def umeyama(src, dst, estimate_scale):
 
 def count_unique(d):
     return dict(zip(*np.unique(d, return_counts=True)))
+
+
+def count_nan(d):
+    return np.count_nonzero(np.isnan(d))
+
+
+def print_all(d):
+    with np.printoptions(threshold=np.inf):
+        print(d)
