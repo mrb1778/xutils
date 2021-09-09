@@ -160,7 +160,7 @@ def get_column_index(df: pd.DataFrame, column):
 
 
 def print_all(df: pd.DataFrame):
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None, "display.width", None):
         print(df)
     return df
 
