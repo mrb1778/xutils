@@ -246,14 +246,11 @@ def add_calc_column(df, column_name, calc_fn, cleanup=False):
     return df
 
 
-def enrich_data(root_path,
-                source_data_path,
+def enrich_data(source_data_path,
+                save_path,
                 enrich_fn,
-                enrich_type="enriched",
-                name="data",
                 post_loader_fn=None,
                 update=False):
-    data_path = os.path.join(root_path, enrich_type, name + ".csv")
 
     def enrich_fn_wrapper(path):
         df = pd.read_csv(source_data_path)
@@ -264,7 +261,7 @@ def enrich_data(root_path,
         df.to_csv(path, index=False)
         return path
 
-    return fu.create_file_if(data_path, enrich_fn_wrapper, update)
+    return fu.create_file_if(save_path, enrich_fn_wrapper, update)
 
 
 def rows_cols(df, row_start, row_end=None, cols=None):

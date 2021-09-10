@@ -17,7 +17,7 @@ HOLD = 1
 SELL = 0
 
 
-def download_stock_date_from_alphavantage(path, ticker, api_key, update=False):
+def download_alphavantage(path, ticker, api_key, update=False):
     return nu.download_if(
         path,
         "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&outputsize=full&apikey=" +
