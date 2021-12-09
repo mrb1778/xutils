@@ -101,3 +101,9 @@ FILENAME_SAFE_CHARS = (' ', '.', '_')
 
 def to_file_name(file_name, replace_with="_"):
     return replace_with.join(c for c in file_name if c.isalnum() or c in FILENAME_SAFE_CHARS).rstrip()
+
+
+def script_path(file=None):
+    return os.path.dirname(
+        os.path.realpath(
+            __file__ if file is None else file))

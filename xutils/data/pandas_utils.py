@@ -5,11 +5,11 @@ import xutils.core.file_utils as fu
 
 
 def read(*paths) -> pd.DataFrame:
-    path = paths[0] if len(paths) == 0 else os.path.join(*paths)
-    return pd.read_csv(path)
+    return pd.read_csv(os.path.join(*paths))
 
 
-def write(df: pd.DataFrame, path):
+def write(df: pd.DataFrame, *paths):
+    path = os.path.join(*paths)
     fu.create_parent_dirs(path)
     df.to_csv(path, index=False)
     return df
@@ -246,11 +246,11 @@ def add_calc_column(df, column_name, calc_fn, cleanup=False):
     return df
 
 
-def enrich_data(source_data_path,
-                save_path,
-                enrich_fn,
-                post_loader_fn=None,
-                update=False):
+def read_enrich_write(source_data_path,
+                      save_path,
+                      enrich_fn,
+                      post_loader_fn=None,
+                      update=False):
 
     def enrich_fn_wrapper(path):
         df = pd.read_csv(source_data_path)
@@ -270,3 +270,7 @@ def rows_cols(df, row_start, row_end=None, cols=None):
 
 def cols(df, *cols):
     return df.loc[:, cols]
+
+
+def quartiles(df, column, points):
+    return df[column].quantile(points if points else [0.25, 0.5, 0.75]).values

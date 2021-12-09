@@ -336,3 +336,12 @@ class DataManager:
         self.y = self.df[column].values
         # todo: determine if need to track history for further training processing? dont need for value processing
         # self.data_config.append({"type": "label_from_column", "kwargs": {"column": column}})
+
+    def rolling_window(self, window=30):
+        rolling_x = []
+        for i in range(window, len(self.x)):
+            rolling_x.append(self.x[i - window:i])
+        
+        self.x = rolling_x
+        self.y = self.y[window:]
+        self.data_config.append({"type": "rolling_data", "kwargs": {"window": window}})
