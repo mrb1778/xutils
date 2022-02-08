@@ -40,7 +40,7 @@ def get_balanced_weights(y):
     return sample_weights
 
 
-def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_encoded=False):
+def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_encoded=False, print_results=True):
     if actual_hot_encoded:
         actual = np.argmax(actual, axis=1)
     if predicted_hot_encoded:
@@ -83,14 +83,18 @@ def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_e
 
     conf_mat = skm.confusion_matrix(actual, predicted)
     results["Confusion Matrix"] = conf_mat
-    recall = []
+    recalls = []
     for i, row in enumerate(conf_mat):
-        recall.append(np.round(row[i] / np.sum(row), 2))
-        results[f"Recall {i}"] = recall[i]
-    results["Recall Average"] = sum(recall) / len(recall)
+        recall = np.round(row[i] / np.sum(row), 2)
+        results[f"Recall {i}"] = recall
+        recalls.append(recall)
 
-    print("----Compare Results----")
-    pu.print_dict(results)
+    results["Recall Average"] = sum(recalls) / len(recalls)
+
+    if print_results:
+        print("----Compare Results----")
+        pu.print_dict(results)
+
     return results
 
 

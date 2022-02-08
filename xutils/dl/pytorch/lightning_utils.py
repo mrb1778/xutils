@@ -3,7 +3,7 @@ import os
 from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.metrics import Precision, Recall, Accuracy
+from torchmetrics import Precision, Recall, Accuracy
 import pytorch_lightning as pl
 
 from torch.utils.data import DataLoader, Dataset
@@ -13,16 +13,19 @@ import torch.nn.functional as F
 from xutils.core.python_utils import getattr_ignore_case
 import xutils.data.data_utils as du
 import xutils.dl.pytorch.utils as pyu
+import xutils.core.file_utils as fu
+
+torch.autograd.set_detect_anomaly(True)
 
 
 class WrapperModule(LightningModule):
-    def __init__(self, wrapped, learning_rate, loss_fn=None, num_classes=None):
+    def __init__(self, wrapped, learning_rate, loss_fn=None, num_classes=None, batch_size=10):
         super(WrapperModule, self).__init__()
         self.model = wrapped
         self.model.to(self.device)
 
         self.learning_rate = learning_rate
-        self.save_hyperparameters('learning_rate', 'loss_fn')
+        self.save_hyperparameters('learning_rate', 'loss_fn', 'batch_size')
 
         if loss_fn is None:
             # todo: auto choose based on type flag
@@ -54,7 +57,9 @@ class WrapperModule(LightningModule):
         y_hat = self.model(x)
         loss = self.loss(y_hat, y)
 
-        return {'loss': loss, "log": batch_idx % self.trainer.accumulate_grad_batches == 0}
+        self.log("loss", loss)
+        self.log("log", batch_idx % self.trainer.accumulate_grad_batches == 0)
+        return loss
 
     def _should_log(self, flag):
         if (self.trainer.global_step + 1) % self.trainer.log_every_n_steps == 0:
@@ -63,69 +68,63 @@ class WrapperModule(LightningModule):
             return flag
         return False
 
-    def training_step_end(self, outputs):
-        # Aggregate the losses from all GPUs
-        loss = outputs["loss"].mean()
-        self.train_loss_tracker.update(loss.detach())
-        if self._should_log(outputs["log"]):
-            self.logger.log_metrics({
-                "train_loss": self.train_loss_tracker.value
-            }, step=self.global_step)
-        return loss
+    # def training_step_end(self, outputs):
+    #     # Aggregate the losses from all GPUs
+    #     loss = outputs["loss"].mean()
+    #     self.train_loss_tracker.update(loss.detach())
+    #     if self._should_log(outputs["log"]):
+    #         self.logger.log_metrics({
+    #             "train_loss": self.train_loss_tracker.value
+    #         }, step=self.global_step)
+    #
+    #     self.log("loss", loss)
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.model(x)
 
         # self.log_dict(metrics)
-        metrics = {
-            "val_loss": self.loss(y_hat, y),
-            "val_acc": self.accuracy(y_hat, torch.argmax(y.squeeze(), dim=1))
-        }
+        # print("------val_acc", self.accuracy(y_hat, torch.argmax(y.squeeze(), dim=1)).cpu())
+        self.log("val_loss", self.loss(y_hat, y))
+        self.log("val_acc", self.accuracy(y_hat, torch.argmax(y.squeeze(), dim=1)))
         # if self.recall:
         #     metrics["recall"] = self.recall(y_hat, y)
         # if self.precision:
         #     metrics["precision"] = self.precision(y_hat, y)
 
-        return metrics
-
     # noinspection PyMethodMayBeStatic
-    def validation_end(self, outputs):
-        print("validation_end", outputs[0].keys())
-        avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        avg_acc = torch.stack([x['val_acc'] for x in outputs]).mean()
-
-        return {
-            'val_loss': avg_loss,
-            'val_acc': avg_acc,
-            'progress_bar': {'val_loss': avg_loss, 'val_acc': avg_acc}
-        }
+    # def validation_end(self, outputs):
+    #     print("validation_end", outputs[0].keys())
+    #     avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+    #     avg_acc = torch.stack([x['val_acc'] for x in outputs]).mean()
+    #
+    #     self.log('val_loss', avg_loss)
+    #     self.log('val_acc', avg_acc)
+    #     # self.log('progress_bar', {'val_loss': avg_loss, 'val_acc': avg_acc})
 
     def test_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self.model(x)
         # self.log_dict(metrics)
-        return {
-            "y_hat": y_hat,
-            "y": y,
-            "val_loss": self.loss(y_hat, y)
-        }
+        self.log("y_hat", y_hat)
+        self.log("y", y)
+        self.log("val_loss", self.loss(y_hat, y))
 
-    def test_epoch_end(self, outputs):
-        y_hat = torch.cat([tmp['y_hat'] for tmp in outputs])
-        y = torch.cat([tmp['y'] for tmp in outputs])
-        du.compare_results(actual=y_hat.cpu().numpy(),
-                           actual_hot_encoded=True,
-                           predicted=y.cpu().numpy(),
-                           predicted_hot_encoded=True)
-        # confusion_matrix = pl.metrics.functional.confusion_matrix(preds, targets, num_classes=10)
-        #
-        # df_cm = pd.DataFrame(confusion_matrix.numpy(), index=range(10), columns=range(10))
-        # plt.figure(figsize=(10, 7))
-        # fig_ = sns.heatmap(df_cm, annot=True, cmap='Spectral').get_figure()
-        # plt.close(fig_)
-        #
-        # self.logger.experiment.add_figure("Confusion matrix", fig_, self.current_epoch)
+    # def test_epoch_end(self, outputs):
+    #     y_hat = torch.cat([tmp['y_hat'] for tmp in outputs])
+    #     y = torch.cat([tmp['y'] for tmp in outputs])
+    #     du.compare_results(actual=y_hat.cpu().numpy(),
+    #                        actual_hot_encoded=True,
+    #                        predicted=y.cpu().numpy(),
+    #                        predicted_hot_encoded=True)
+    #     # confusion_matrix = pl.metrics.functional.confusion_matrix(preds, targets, num_classes=10)
+    #     #
+    #     # df_cm = pd.DataFrame(confusion_matrix.numpy(), index=range(10), columns=range(10))
+    #     # plt.figure(figsize=(10, 7))
+    #     # fig_ = sns.heatmap(df_cm, annot=True, cmap='Spectral').get_figure()
+    #     # plt.close(fig_)
+    #     #
+    #     # self.logger.experiment.add_figure("Confusion matrix", fig_, self.current_epoch)
 
     def loss(self, y_hat, y):
         return self.loss_fn(y_hat, y)
@@ -276,20 +275,35 @@ def wrap_model(base_model):
     return WrapperModuleChild
 
 
+def set_deterministic(seed=42):
+    # https://pytorch.org/docs/stable/notes/randomness.html
+    pl.seed_everything(seed, workers=True)
+    torch.use_deterministic_algorithms(True)
+    # https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html#torch.nn.LSTM
+    os.putenv("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
+
 def train_model(model,
                 model_kwargs,
                 save_path,
                 dataset=None,
                 data_manager=None,
-                epochs=300):
+                epochs=300,
+                deterministic=False):
+
+    if deterministic:
+        set_deterministic()
+
     if data_manager is not None:
         dataset = create_data_module(data_manager=data_manager)
 
     lightning_model_fn = wrap_model(model)
     lightning_model = lightning_model_fn(**model_kwargs)
 
+    temp_save_path = os.path.join(save_path, "temp")
+    fu.create_dirs(temp_save_path)
     callback_checkpoint = ModelCheckpoint(monitor='val_loss',
-                                          dirpath=save_path,
+                                          dirpath=temp_save_path,
                                           filename="checkpoint-{val_acc:.2f}-{val_loss:.2f}-{epoch:02d}")
     trainer = pl.Trainer(gpus=pyu.num_gpus(),
                          callbacks=[
@@ -299,14 +313,20 @@ def train_model(model,
                              # ),
                              callback_checkpoint
                          ],
+                         # log_every_n_steps=1,
                          auto_lr_find=True,
-                         auto_scale_batch_size=True,
+                         auto_scale_batch_size="power",
                          max_epochs=epochs,
-                         logger=TensorBoardLogger(os.path.join(save_path, 'tensorboard')))
+                         logger=TensorBoardLogger(os.path.join(save_path, 'tensorboard')),
+
+                         benchmark=not deterministic,
+                         deterministic=deterministic)
+    # trainer.tune(lightning_model)
     trainer.fit(lightning_model, datamodule=dataset)
 
     print("Best Model", callback_checkpoint.best_model_path)
 
+    print('callback_checkpoint.best_model_path', callback_checkpoint.best_model_path, ':end')
     best_model = load_model(model_or_class=lightning_model_fn,
                             path=callback_checkpoint.best_model_path,
                             model_kwargs=model_kwargs)
@@ -315,6 +335,8 @@ def train_model(model,
         results = trainer.test(best_model, datamodule=dataset)
         print("Test Results", results)
 
+    fu.move(callback_checkpoint.best_model_path, save_path)
+    fu.remove_dirs(temp_save_path)
     return best_model
 
 

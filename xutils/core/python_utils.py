@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 import inspect
@@ -122,3 +123,15 @@ def get_stack(only=None, print_=True):
             break
         stack_frame = stack_frame.f_back
         return stack
+
+
+class ParseKwargs(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, dict())
+        for value in values:
+            key, value = value.split('=')
+            getattr(namespace, self.dest)[key] = value
+
+
+def add_kwargs_arg(parser, arg_name="args"):
+    parser.add_argument(arg_name, nargs='*', action=ParseKwargs)

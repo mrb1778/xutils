@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import xutils.core.file_utils as fu
+import xutils.core.python_utils as pyu
 
 
 def read(*paths) -> pd.DataFrame:
@@ -125,12 +126,11 @@ def describe_data(df: pd.DataFrame):
     df.info()
     print('Shape of data frame:')
     print(df.shape)
-    for col in df.columns:
-        print("Unique number of values in ")
-        print(col)
-        print(df.loc[:,col].nunique())
-    print("number of null values present in each column")
+    print("Unique values:")
+    pyu.print_dict({col: df.loc[:,col].nunique() for col in df.columns})
+    print("Null Count:")
     print(df.isnull().sum())
+    print("First 5:")
     print(df.head(5))
     return df
 
@@ -257,7 +257,10 @@ def read_enrich_write(source_data_path,
         if post_loader_fn is not None:
             post_loader_fn(df)
 
-        enrich_fn(df)
+        enrich_result = enrich_fn(df)
+        if enrich_result is not None:
+            df = enrich_result
+
         df.to_csv(path, index=False)
         return path
 

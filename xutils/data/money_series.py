@@ -14,8 +14,8 @@ class PandasMoneySeries(PandasSeries):
                  data=None,
                  balance=0,
                  price_column="price",
-                 dividend_column="dividend_amount",
-                 split_column="split_coefficient",
+                 dividend_column="dividend",
+                 split_column="split",
                  date_column="timestamp",
                  start_date=None,
                  end_date=None

@@ -36,13 +36,18 @@ def get_file_name(path, strip_extension=False):
         return name
 
 
-def exists(path, msg):
-    assert os.path.exists(path), msg
+def exists(path):
+    return os.path.exists(path)
 
 
 def ensure_exists(path):
     if not os.path.exists(path):
         os.makedirs(path)
+
+
+def move(path, to):
+    path = Path(path)
+    path.rename(os.path.join(Path(to), path.name))
 
 
 def download_and_unzip(url):
@@ -79,6 +84,14 @@ def create_file_if(path, create_fn, update=False):
 
 def create_parent_dirs(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+
+def create_dirs(path):
+    os.makedirs(path, exist_ok=True)
+
+
+def remove_dirs(path):
+    shutil.rmtree(path)
 
 
 def get_difference(file1, file2, print_results=True):
