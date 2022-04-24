@@ -12,10 +12,10 @@ def download_alphavantage(path, ticker, api_key, update=False):
         update=update)
 
 
-def download_yahoo(ticker, save_path=None, update=False):
+def download_yahoo(ticker: str, save_path=None, update=False):
     def _download():
         import yfinance as yf
-        y_ticker = yf.Ticker(ticker)
+        y_ticker = yf.Ticker(ticker.replace(".", "-"))
         df = y_ticker.history(period="max")
         df.reset_index(level=0, inplace=True)
         df.rename(columns={

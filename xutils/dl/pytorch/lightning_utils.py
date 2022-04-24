@@ -19,7 +19,7 @@ torch.autograd.set_detect_anomaly(True)
 
 
 class WrapperModule(LightningModule):
-    def __init__(self, wrapped, learning_rate, loss_fn=None, num_classes=None, batch_size=10):
+    def __init__(self, wrapped, learning_rate, loss_fn=None, batch_size=10):  # , num_classes=None):
         super(WrapperModule, self).__init__()
         self.model = wrapped
         self.model.to(self.device)
@@ -264,13 +264,13 @@ def load_model(model_or_class, path, model_kwargs, wrap=False):
 
 
 def wrap_model(base_model):
+    # noinspection PyAbstractClass
     class WrapperModuleChild(WrapperModule):
-        def __init__(self, learning_rate, loss_fn=None, num_classes=None):
+        def __init__(self, learning_rate, loss_fn=None):
             super(WrapperModuleChild, self).__init__(
                 base_model,
                 learning_rate,
-                loss_fn=loss_fn,
-                num_classes=num_classes)
+                loss_fn=loss_fn)
 
     return WrapperModuleChild
 
@@ -284,8 +284,8 @@ def set_deterministic(seed=42):
 
 
 def train_model(model,
-                model_kwargs,
-                save_path,
+                train_kwargs,
+                checkpoint_path,
                 dataset=None,
                 data_manager=None,
                 epochs=300,
@@ -294,16 +294,16 @@ def train_model(model,
     if deterministic:
         set_deterministic()
 
-    if data_manager is not None:
+    if data_manager is not None and dataset is None:
         dataset = create_data_module(data_manager=data_manager)
 
     lightning_model_fn = wrap_model(model)
-    lightning_model = lightning_model_fn(**model_kwargs)
+    lightning_model = lightning_model_fn(**train_kwargs)
 
-    temp_save_path = os.path.join(save_path, "temp")
-    fu.create_dirs(temp_save_path)
+    temp_checkpoint_path = os.path.join(checkpoint_path, "temp")
+    fu.create_dirs(temp_checkpoint_path)
     callback_checkpoint = ModelCheckpoint(monitor='val_loss',
-                                          dirpath=temp_save_path,
+                                          dirpath=temp_checkpoint_path,
                                           filename="checkpoint-{val_acc:.2f}-{val_loss:.2f}-{epoch:02d}")
     trainer = pl.Trainer(gpus=pyu.num_gpus(),
                          callbacks=[
@@ -317,7 +317,7 @@ def train_model(model,
                          auto_lr_find=True,
                          auto_scale_batch_size="power",
                          max_epochs=epochs,
-                         logger=TensorBoardLogger(os.path.join(save_path, 'tensorboard')),
+                         logger=TensorBoardLogger(os.path.join(checkpoint_path, 'tensorboard')),
 
                          benchmark=not deterministic,
                          deterministic=deterministic)
@@ -326,18 +326,18 @@ def train_model(model,
 
     print("Best Model", callback_checkpoint.best_model_path)
 
-    print('callback_checkpoint.best_model_path', callback_checkpoint.best_model_path, ':end')
     best_model = load_model(model_or_class=lightning_model_fn,
                             path=callback_checkpoint.best_model_path,
-                            model_kwargs=model_kwargs)
+                            model_kwargs=train_kwargs)
 
     if dataset.test_dataset is not None:
         results = trainer.test(best_model, datamodule=dataset)
         print("Test Results", results)
 
-    fu.move(callback_checkpoint.best_model_path, save_path)
-    fu.remove_dirs(temp_save_path)
-    return best_model
+    best_model_path = fu.move(callback_checkpoint.best_model_path, checkpoint_path)
+    fu.remove_dirs(temp_checkpoint_path)
+
+    return best_model, best_model_path
 
 
 def test_model(model, x=None, y=None, trainer=None, data=None):

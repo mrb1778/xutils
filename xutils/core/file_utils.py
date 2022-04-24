@@ -1,6 +1,5 @@
 import glob
 
-import operator
 import os
 import shutil
 import tarfile
@@ -8,7 +7,7 @@ import tempfile
 
 from urllib.request import urlopen
 
-from pathlib import Path
+from pathlib import Path, PurePath
 
 
 def path_inspect(path, search="*", trim_path=True):
@@ -16,16 +15,29 @@ def path_inspect(path, search="*", trim_path=True):
         print(str(file_name)[len(path) + 1:] if trim_path else file_name)
 
 
-def list_files(path, extension=None, sort_name=True, sort_size=False, sort_updated=False):
-    files = glob.glob(path if extension is None else os.path.join(path, f"*.{extension}"))
+def list_paths(path,
+               extension=None,
+               sort_name=True,
+               sort_size=False,
+               sort_updated=False,
+               recursive=False,
+               only_directories=False,
+               just_name=False):
+    paths = glob.glob(os.path.join(path, "*" if extension is None else f"*.{extension}"),
+                      recursive=recursive)
+    if only_directories:
+        paths = [path for path in paths if os.path.isdir(path)]
+
     if sort_name or sort_size or sort_updated:
-        return sorted(files, key=lambda x: (
+        paths = sorted(paths, key=lambda x: (
             x if sort_name else None,
             os.path.getsize(x) if sort_size else None,
             os.path.getmtime(x) if sort_updated else None,
         ))
-    else:
-        return files
+
+    if just_name:
+        paths = [PurePath(path).name for path in paths]
+    return paths
 
 
 def get_file_name(path, strip_extension=False):
@@ -45,9 +57,41 @@ def ensure_exists(path):
         os.makedirs(path)
 
 
+def delete(path):
+    Path(path).unlink()
+
+
+def delete_files(path):
+    for f in Path(path).glob("*"):
+        if f.is_file():
+            f.unlink()
+
+
+def delete_all(path):
+    for path in Path(path).glob("**/*"):
+        if path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            shutil.rmtree(path)
+
+
 def move(path, to):
+    ensure_exists(to)
     path = Path(path)
-    path.rename(os.path.join(Path(to), path.name))
+    # return str(path.rename(os.path.join(Path(to), path.name))) --> permission problems
+    return shutil.move(path, os.path.join(Path(to), path.name))
+
+
+def copy(path, to, with_prefix=False):
+    ensure_exists(to)
+
+    path = Path(path)
+    if with_prefix:
+        for p in path.parent.glob(f"{path.name}*"):
+            if p.is_file():
+                copy(p, to, with_prefix=False)
+    else:
+        return shutil.copy(str(path), os.path.join(Path(to), path.name))
 
 
 def download_and_unzip(url):
@@ -120,3 +164,19 @@ def script_path(file=None):
     return os.path.dirname(
         os.path.realpath(
             __file__ if file is None else file))
+
+
+def add_seekable_to_file(f):
+    """
+    If file f does not has seekable function -
+    add seekable function that will always return true
+    Args:
+        f: the file
+    Returns: the file f with seekable function
+
+    """
+    if not hasattr(f, "seekable"):
+        # AFAICT all the filetypes that STF wraps can seek
+        f.seekable = lambda: True
+
+    return f

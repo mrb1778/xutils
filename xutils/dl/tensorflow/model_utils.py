@@ -322,7 +322,7 @@ def mapped_channel_difference(x):
                     tf.subtract(x_i, x[j])
                 )
 
-    return tf.stack(differences)
+    return tf.requirements(differences)
 
 
 def relative_channel_difference(x):
@@ -731,7 +731,7 @@ def sample_random_frames(model_input, num_frames, num_samples):
             tf.tile(tf.cast(num_frames, tf.float32), [1, num_samples])), tf.int32)
     batch_index = tf.tile(
         tf.expand_dims(tf.range(batch_size), 1), [1, num_samples])
-    index = tf.stack([batch_index, frame_index], 2)
+    index = tf.requirements([batch_index, frame_index], 2)
     return tf.gather_nd(model_input, index)
 
 

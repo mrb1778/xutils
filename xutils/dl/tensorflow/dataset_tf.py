@@ -27,7 +27,7 @@ def create_dataset(x, labels, map_fn=None, batch_size=128, num_classes=None):
 
 def prepare_dataset(dataset, batch_size=128, shuffle_buffer_size=500, num_epochs=None):
     dataset = dataset.shuffle(shuffle_buffer_size)
-    dataset = dataset.batch(batch_size)
+    dataset = dataset.run_batch(batch_size)
     dataset = dataset.repeat(num_epochs)
 
     return dataset
@@ -88,7 +88,7 @@ def tf_image_data_generator(images, labels, is_training, batch_size=128, num_cla
     if is_training:
         dataset = dataset.shuffle(1000)  # depends on sample size
     dataset = dataset.map(map_fn)
-    dataset = dataset.batch(batch_size)
+    dataset = dataset.run_batch(batch_size)
     dataset = dataset.repeat()
     dataset = dataset.prefetch(tf.contrib.data.AUTOTUNE)
 
@@ -101,7 +101,7 @@ def get_file_dataset(path, map_fn, batch_size=1, buffer_size=400, is_training=Tr
         dataset = dataset.shuffle(buffer_size)
     if map_fn is not None:
         dataset = dataset.map(map_fn)
-    dataset = dataset.batch(batch_size)
+    dataset = dataset.run_batch(batch_size)
     return dataset
 
 

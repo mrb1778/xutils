@@ -626,6 +626,18 @@ def get_buy_sell(df, threshold=0, buy_positive=True, non_threshold="HOLD"):
     return df.apply(get_result)
 
 
+def get_up_down(df, no_change="SELL"):
+    def get_result(x):
+        if x > 0:
+            return "UP"
+        elif x == 0:
+            return no_change
+        else:
+            return "SELL"
+
+    return df.apply(get_result)
+
+
 def as_buy_sell(df, col_name="label", buy_positive=True):
     df[col_name] = get_buy_sell(df[col_name], buy_positive=buy_positive)
 
