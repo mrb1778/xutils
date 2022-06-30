@@ -1,4 +1,5 @@
 import os
+import time
 
 from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
@@ -87,6 +88,11 @@ class WrapperModule(LightningModule):
 
         # self.log_dict(metrics)
         # print("------val_acc", self.accuracy(y_hat, torch.argmax(y.squeeze(), dim=1)).cpu())
+        self.log("time_stamp", time.time())
+
+        # todo: figure out dimensions / unsqueeze
+        # self.log("val_loss", self.loss(y_hat, y))
+        # self.log("val_acc", self.accuracy(y_hat, torch.argmax(y.squeeze(), dim=1)))
         self.log("val_loss", self.loss(y_hat, y))
         self.log("val_acc", self.accuracy(y_hat, torch.argmax(y.squeeze(), dim=1)))
         # if self.recall:
@@ -306,7 +312,7 @@ def train_model(model,
     fu.create_dirs(temp_checkpoint_path)
     callback_checkpoint = ModelCheckpoint(monitor='val_loss',
                                           dirpath=temp_checkpoint_path,
-                                          filename="checkpoint-{val_acc:.2f}-{val_loss:.2f}-{epoch:02d}")
+                                          filename="checkpoint-{val_acc:.2f}-{val_loss:.2f}-{epoch:02d}-at-{time_stamp}")
     trainer = pl.Trainer(gpus=pyu.num_gpus(),
                          callbacks=[
                              # EarlyStopping(
