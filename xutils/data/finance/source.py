@@ -34,6 +34,7 @@ def download_yahoo(ticker: str, save_path=None, update=False):
         def _save_and_download(path):
             df = download_yahoo(ticker)
             df.to_csv(path, index=False)
+            return path
         return fu.create_file_if(save_path,
                                  _save_and_download,
                                  update=update)
