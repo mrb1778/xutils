@@ -9,6 +9,15 @@ import random
 from xutils.dl.pytorch.grad_cam import do_grad_cam
 
 
+def plot(data, title, x_label, y_label):
+    plt.plot(data)
+    plt.title(title)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+
+    plt.show()
+
+
 def plot_series(data, title, x_label, y_label):
     ax = pd.DataFrame(data).plot(title=title, logy=True)
     ax.set_xlabel(x_label)
