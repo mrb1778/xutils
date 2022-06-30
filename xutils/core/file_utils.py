@@ -180,3 +180,11 @@ def add_seekable_to_file(f):
         f.seekable = lambda: True
 
     return f
+
+
+def modified(path):
+    return Path(path).stat().st_mtime
+
+
+def modified_after(after, before):
+    return modified(after) > modified(before)
