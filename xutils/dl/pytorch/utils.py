@@ -1,6 +1,9 @@
 import io
+
+import requests
 import torch
 from torch import nn as nn
+from torch.utils.mobile_optimizer import optimize_for_mobile
 
 
 def has_gpu():
@@ -13,6 +16,10 @@ def get_device():
 
 def num_gpus():
     return torch.cuda.device_count()
+
+
+def free_memory():
+    torch.cuda.empty_cache()
 
 
 def model_summary(model, count_params=True) -> str:
@@ -64,3 +71,40 @@ class TransferLearnModel(nn.Module):
         f = f.view(f.size(0), -1)
         y = self.classifier(f)
         return y
+
+
+def save_for_mobile(model, spec, save_as):
+    scripted_model = torch.jit.script(model)
+    optimized_model = optimize_for_mobile(scripted_model)
+    extra_files = {
+        "model/live.spec.json": spec
+    }
+    # noinspection PyProtectedMember
+    optimized_model._save_for_lite_interpreter(f"{save_as}.ptl", _extra_files=extra_files)
+
+    # https://pytorch.org/mobile/android/
+    # import torch
+    # import torchvision
+    # from torch.utils.mobile_optimizer import optimize_for_mobile
+    #
+    # model = torchvision.models.mobilenet_v2(pretrained=True)
+    # model.eval()
+    # example = torch.rand(1, 3, 224, 224)
+    # traced_script_module = torch.jit.trace(model, example)
+    # traced_script_module_optimized = optimize_for_mobile(traced_script_module)
+    # traced_script_module_optimized._save_for_lite_interpreter("app/src/main/assets/model.ptl")
+
+
+def load_model(path: str, device: torch.device = None) -> nn.Module:
+    if device is None:
+        device = get_device()
+
+    if path.startswith('http://') or path.startswith('https://'):
+        resp = requests.get(path)
+        resp.raise_for_status()
+
+        with io.BytesIO(resp.content) as buf:
+            return torch.load(buf, map_location=device)
+    else:
+        with open(path, 'rb') as f:
+            return torch.load(f, map_location=device)
