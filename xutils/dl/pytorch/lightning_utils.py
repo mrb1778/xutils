@@ -36,6 +36,8 @@ class WrapperModule(LightningModule):
             self.loss_fn = lambda y_hat, y: (-(y_hat + 1e-5).log() * y).sum(dim=1).mean()
         elif isinstance(loss_fn, str):
             self.loss_fn = getattr_ignore_case(F, loss_fn)
+            if self.loss_fn is None:
+                self.loss_fn = getattr_ignore_case(nn, loss_fn)()
         else:
             self.loss_fn = loss_fn
 
