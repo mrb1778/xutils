@@ -1,14 +1,16 @@
 import argparse
 import functools
+import time
 from types import FunctionType
-from typing import Union, Any, Dict, List
+from typing import Union, Any, Dict, List, Optional, Callable, Literal
 
 import xutils.core.python_utils as pu
 import xutils.data.json_utils as ju
 
 
 class GoalDefinition:
-    def __init__(self, name, scope=None, pre=None, params=None, refs=None, fun=None, goal_lookup=None) -> None:
+    def __init__(self, name, scope=None, pre=None, post=None, params=None, refs=None, fun=None,
+                 goal_lookup=None) -> None:
         super().__init__()
 
         self.scope = scope
@@ -22,6 +24,15 @@ class GoalDefinition:
             if isinstance(ref_goal, FunctionType):
                 pre[i] = goal_lookup(ref_goal)
         self.pre = pre
+
+        if post is None:
+            post = []
+        if not isinstance(post, (list, tuple)):
+            post = [post]
+        for i, ref_goal in enumerate(post):
+            if isinstance(ref_goal, FunctionType):
+                post[i] = goal_lookup(ref_goal)
+        self.post = post
 
         if params is None:
             params = dict()
@@ -91,6 +102,9 @@ class GoalDefinition:
         }
         if len(self.pre):
             json["pre"] = self.pre
+
+        if len(self.post):
+            json["post"] = self.post
 
         if len(self.params):
             json["params"] = [
@@ -208,7 +222,17 @@ class DuplicateGoal(Exception):
 
 
 class UnmetGoal(Exception):
-    pass
+    def __init__(self, name, phase: Literal["pre", "param", "post"], message: str) -> None:
+        super().__init__(name, phase, message)
+        self.name = name
+        self.phase = phase
+        self.message = message
+
+    def __str__(self) -> str:
+        str_value = f"UnmetGoal({self.phase}:{self.name})\n-->{self.__cause__.__str__()}\n"
+        if isinstance(self.__cause__, self.__class__):
+            str_value += self.message
+        return str_value
 
 
 class GoalRegistry:
@@ -218,6 +242,8 @@ class GoalRegistry:
     def __init__(self):
         self._goals: Dict[str, Dict[str, GoalDefinition]] = {}
         self.current_scope = GoalScope(self, scope=self.SCOPE_DEFAULT)
+
+        self.trace: False
 
     def goals(self, scope=None, create=False):
         if scope is None:
@@ -255,6 +281,7 @@ class GoalRegistry:
             name=None,
             fun=None,
             pre=None,
+            post=None,
             params=None,
             refs=None,
             overwrite=False,
@@ -269,6 +296,7 @@ class GoalRegistry:
             goal_def = GoalDefinition(name=name,
                                       scope=scope,
                                       pre=pre,
+                                      post=post,
                                       params=params,
                                       fun=fun,
                                       refs=refs,
@@ -280,9 +308,15 @@ class GoalRegistry:
 
         scoped_goals[goal_def.name] = goal_def
 
-    def __call__(self, name: str, pre=None, params=None, refs=None, scope=None):
+    def __call__(self, name: str, pre=None, post=None, params=None, refs=None, scope=None):
         def decorator_goal(fun):
-            self.add(name, fun, pre, params, refs, scope=scope)
+            self.add(name,
+                     fun=fun,
+                     pre=pre,
+                     post=post,
+                     params=params,
+                     refs=refs,
+                     scope=scope)
 
             @functools.wraps(fun)
             def wrapper(**kwargs):
@@ -306,6 +340,9 @@ class GoalRegistry:
 
         for pre in goal_def.pre:
             full_requirements.update(self.requirements(pre, scope=scope))
+
+        for post in goal_def.post:
+            full_requirements.update(self.requirements(post, scope=scope))
 
         for ref in goal_def.refs:
             full_requirements.update(self.requirements(ref, scope=scope))
@@ -355,23 +392,46 @@ class GoalRegistry:
         return list(found_params.values())
 
     def run(self, name, scope=None, **kwargs):
+        return self._run_with_context(name=name,
+                                      scope=scope,
+                                      fun_kwargs={**kwargs})
+
+    def _run_with_context(self, name, scope=None, goal_context=None, fun_kwargs=None):
+        if goal_context is None:
+            goal_context = {"level": 0, "Phase": "Run"}
+        else:
+            goal_context = {**goal_context, "level": goal_context["level"] + 1}
+
+        if self.trace:
+            print((goal_context["level"] * 5) * " ",
+                  "@Goal(",
+                  *((scope, "::") if scope is not None else ()),
+                  name, ')')
+            start_time = time.time()
+
         if isinstance(name, (list, tuple)):
             results = []
             for goal_name in name:
-                results.append(self.run(goal_name, scope=scope, **kwargs))
+                results.append(self._run_with_context(goal_context=goal_context,
+                                                      name=goal_name,
+                                                      scope=scope,
+                                                      fun_kwargs=fun_kwargs))
             return results
         else:
             goal_def = self.definition(name, scope=scope)
 
-            updated_kwargs = kwargs.copy()
+            updated_kwargs = fun_kwargs.copy()
 
             results = []
-            for prerequisite in goal_def.pre:
+            for pre in goal_def.pre:
                 try:
-                    result = self.run(prerequisite, scope=scope, **kwargs)
+                    result = self._run_with_context(goal_context=goal_context,
+                                                    name=pre,
+                                                    scope=scope,
+                                                    fun_kwargs=fun_kwargs)
                     results.append(result)
                 except Exception as e:
-                    raise UnmetGoal(name) from e
+                    raise UnmetGoal(name=name, phase="pre", message="Pre Failed") from e
 
             if len(results) > 0:
                 updated_kwargs[ResultParam.ALL_KWARGS_PARAM] = results[0]
@@ -380,14 +440,37 @@ class GoalRegistry:
             for param_name, param_value in goal_def.params_of_type(GoalParam).items():
                 goal_name = param_value.name
                 try:
-                    fun_kwargs = {**param_value.kwargs, **kwargs}
-                    updated_kwargs[param_name] = self.run(goal_name, scope=scope, **fun_kwargs)
+                    fun_kwargs = {**param_value.kwargs, **fun_kwargs}
+                    updated_kwargs[param_name] = self._run_with_context(goal_context=goal_context,
+                                                                        name=goal_name,
+                                                                        scope=scope,
+                                                                        fun_kwargs=fun_kwargs)
                 except Exception as e:
-                    raise UnmetGoal(name) from e
+                    raise UnmetGoal(name,
+                                    phase="param",
+                                    message=f"Error in param {name}({param_name}:{goal_name}) -> {e}") from e
 
-            return goal_def.execute(updated_kwargs)
+            if self.trace:
+                print((goal_context["level"] * 5) * " ", "@Goal Run", name)
 
-    def run_batch(self, json=None, json_path=None, scope=None, base_args=None, **kwargs):
+            result = goal_def.execute(updated_kwargs)
+
+            for post in goal_def.post:
+                try:
+                    result = self._run_with_context(goal_context=goal_context,
+                                                    name=post,
+                                                    scope=scope,
+                                                    fun_kwargs=fun_kwargs)
+                    results.append(result)
+                except Exception as e:
+                    raise UnmetGoal(name=name, phase="post", message="Error in post") from e
+
+            if self.trace:
+                print((goal_context["level"] * 5) * " ", "@Goal Duration", time.time() - start_time)
+
+            return result
+
+    def run_batch(self, json=None, json_path=None, scope=None, **kwargs):
         if json is not None:
             json = ju.read(json)
         elif json_path is not None:
@@ -396,47 +479,54 @@ class GoalRegistry:
         if json is None:
             raise ValueError("json or json file required")
 
-        root_args = {}
-        if base_args is not None:
-            root_args.update(base_args)
-
         if "args" in json:
-            root_args.update(json["args"])
+            kwargs.update(json["args"])
 
+        batch_results = []
         for goal_entry in json["goals"]:
-            self._run_batch_goal(goal_entry=goal_entry,
-                                 goal_args={**root_args, **kwargs},
-                                 scope=scope)
+            batch_result = self._run_batch_goal(goal_entry=goal_entry,
+                                                goal_args=kwargs,
+                                                scope=scope)
+            batch_results.append(batch_result)
+        return batch_results
 
     def _run_batch_goal(self, goal_entry, goal_args, scope):
-
         if "args" in goal_entry:
             goal_args.update(goal_entry["args"])
 
         if "loop" in goal_entry:
             loop_entry = goal_entry["loop"]
-            arg_name = loop_entry["arg"]
             goals = loop_entry["goals"]
+            arg_name = loop_entry["arg"] if "arg" in loop_entry else "__loop_arg__"
 
-            if "goal" in loop_entry:
-                loop_over = self.run(loop_entry["goal"], scope=scope, **goal_args)
-                self._run_batch_goal_loop(loop_over=loop_over,
-                                          goals=goals,
-                                          goal_args=goal_args,
-                                          loop_arg_name=arg_name,
-                                          scope=scope)
+            if "range" in loop_entry:
+                loop_over = range(loop_entry["range"])
             elif "values" in loop_entry:
-                self._run_batch_goal_loop(loop_over=loop_entry["values"],
-                                          goals=goals,
-                                          goal_args=goal_args,
-                                          loop_arg_name=arg_name,
-                                          scope=scope)
-
+                loop_over = loop_entry["values"]
+            elif "valuesGoal" in loop_entry:
+                loop_over = self.run(loop_entry["valuesGoal"], scope=scope, **goal_args)
+            elif "valuesArg" in loop_entry:
+                loop_over = goal_args[loop_entry["valuesArg"]]
             else:
-                raise ValueError("Invalid Loop Goal/Args", goal_entry)
+                raise ValueError("Invalid Loop Over", goal_entry)
 
+            loop_result = self._run_batch_goal_loop(loop_over=loop_over,
+                                                    goals=goals,
+                                                    goal_args=goal_args,
+                                                    loop_arg_name=arg_name,
+                                                    scope=scope)
+
+            if "resultGoal" in loop_entry:
+                if "resultGoalParam" not in loop_entry:
+                    raise ValueError("resultGoal requires resultGoalParam", loop_entry)
+
+                return self.run(loop_entry["resultGoal"],
+                                scope=scope,
+                                **{**goal_args, loop_entry["resultGoalParam"]: loop_result})
+            else:
+                return loop_result
         elif "goal" in goal_entry:
-            self.run(goal_entry["goal"], scope=scope, **goal_args)
+            return self.run(goal_entry["goal"], scope=scope, **goal_args)
         else:
             raise ValueError("Invalid batch Goal", goal_entry)
 
@@ -445,12 +535,17 @@ class GoalRegistry:
             return
         if not pu.iterable(loop_over):
             loop_over = [loop_over]
+
+        loop_results = []
         for arg in loop_over:
             print("_run_batch_goal_loop", arg)
             for loop_goal_entry in goals:
-                self._run_batch_goal(goal_entry=loop_goal_entry,
-                                     goal_args={**goal_args, loop_arg_name: arg},
-                                     scope=scope)
+                loop_result = self._run_batch_goal(goal_entry=loop_goal_entry,
+                                                   goal_args={**goal_args, loop_arg_name: arg},
+                                                   scope=scope)
+                loop_results.append(loop_result)
+
+        return loop_results
 
     def to_json(self, scope=None):
         return {
@@ -534,16 +629,6 @@ class GoalRegistry:
                                                 **kwargs)
         args = pu.parse_unknown_args(arg_parser)
         args = pu.remove_na_from_dict(args)
-        goal_names = None
-        if "goal" in args:
-            goal_name = args["goal"]
-            goal_names = goal_name.split(" ")
-            del args['goal']
-
-        goal_json = None
-        if "goal_json" in args:
-            goal_json = args["goal_json"]
-            del args['goal_json']
 
         # for goal_name in goal_names:
         #     self._create_arg_parser_params(arg_parser=arg_parser,
@@ -553,9 +638,15 @@ class GoalRegistry:
         #                                    enforced_required=True)
         # args = arg_parser.parse_args()
 
-        if goal_json is not None:
-            result = goal.run_batch(json_path=goal_json, scope=scope, base_args=kwargs, **args)
-        elif goal_names is not None:
+        if "goal_json" in args:
+            goal_json = args["goal_json"]
+            del args['goal_json']
+            result = goal.run_batch(json_path=goal_json, scope=scope, **{**kwargs, **args})
+        elif "goal" in args:
+            goal_name = args["goal"]
+            goal_names = goal_name.split(" ")
+            del args['goal']
+
             result = goal.run(goal_names, scope=scope, **{**kwargs, **args})
         else:
             raise ValueError("no goal or json specified")
@@ -564,6 +655,9 @@ class GoalRegistry:
             print(result)
 
         return result
+
+    def debug(self, on=True):
+        self.trace = on
 
 
 class GoalScope:

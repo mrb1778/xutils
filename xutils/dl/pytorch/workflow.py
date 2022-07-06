@@ -1,116 +1,33 @@
-import os
-import tempfile
-import zipfile
-from typing import Optional
+from datetime import datetime
 
 from mrbuilder.builders import pytorch as mrb
 import xutils.dl.pytorch.lightning_utils as lu
 import xutils.core.file_utils as fu
-import xutils.data.data_utils as du
 import xutils.data.json_utils as ju
+import xutils.data.data_utils as du
 
 
-def get_model_builder_from_config(model_definition, config_path):
-    data_manager = du.DataManager()
-    data_manager.load_config(config_path,
-                             play=False)
-    model_builder = get_model_builder(model_definition=model_definition,
-                                      input_shape=data_manager.shape_x,
-                                      output_size=data_manager.shape_y)
-    return model_builder
-
-
-def get_model_builder(model_definition, input_shape, output_size):
+def get_model_builder(model_definition, input_shape, **model_kwargs):
     mrb_net_builder = mrb.build(model_definition)
-    model = mrb_net_builder(input_shape, output_size=output_size)
+    model = mrb_net_builder(input_shape, **model_kwargs)
     return model
 
 
-# class CheckpointPackage:
-#     CHECKPOINT_EXTENSION = "ckpt"
-#     EXTENSION = "package.zip"
-#     META_JSON_NAME = "meta.json"
-#     CHECKPOINT_NAME = "checkpoint." + CHECKPOINT_EXTENSION
-# 
-#     def __init__(self,
-#                  model_definition=None,
-#                  train_kwargs=None,
-#                  input_shape=None,
-#                  output_size=None,
-#                  checkpoint_name=None,
-#                  checkpoint_path: str = None,
-#                  checkpoint_file=None) -> None:
-#         super().__init__()
-#         self.model_definition = model_definition
-#         self.train_kwargs = train_kwargs
-#         self.input_shape = input_shape
-#         self.output_size = output_size
-# 
-#         self.checkpoint_path = checkpoint_path
-#         if checkpoint_name is not None:
-#             self.checkpoint_name = checkpoint_name
-#         elif checkpoint_path is not None:
-#             self.checkpoint_name = fu.get_file_name(self.checkpoint_path)
-# 
-#         self.checkpoint_file = checkpoint_file
-#         self.checkpoint_dir: Optional[tempfile.TemporaryDirectory] = None
-# 
-#     def to_json(self):
-#         return {
-#             "model_definition": self.model_definition,
-#             "train_kwargs": self.train_kwargs,
-#             "input_shape": self.input_shape,
-#             "output_size": self.output_size,
-#             "checkpoint_name": fu.get_file_name(self.checkpoint_path)
-#         }
-# 
-#     def save(self):
-#         package_path = f"{self.checkpoint_path}.{self.EXTENSION}"
-# 
-#         with zipfile.ZipFile(package_path, mode="w") as archive:
-#             archive.writestr(self.META_JSON_NAME, ju.write(self.to_json()))
-#             archive.write(self.checkpoint_path, arcname=self.CHECKPOINT_NAME)
-# 
-#         return package_path
-# 
-#     def __enter__(self):
-#         self.read()
-# 
-#     def read(self):
-#         if self.checkpoint_path.endswith(CheckpointPackage.EXTENSION):
-#             with zipfile.ZipFile(self.checkpoint_path, mode="r") as archive:
-#                 data = ju.read(archive.read(CheckpointPackage.META_JSON_NAME).decode(encoding="utf-8"))
-#                 for name, value in data.items():
-#                     setattr(self, name, value)
-# 
-#                 self.checkpoint_dir = tempfile.TemporaryDirectory()
-#                 self.checkpoint_file = archive.extract(CheckpointPackage.CHECKPOINT_NAME,
-#                                                        path=os.path.join(self.checkpoint_dir.name,
-#                                                                          self.CHECKPOINT_NAME))
-#         else:
-#             raise ValueError("Not a valid package file")
-# 
-#     def __exit__(self, *args):
-#         self.close()
-# 
-#     def close(self):
-#         self.checkpoint_dir.cleanup()
-# 
-#     @staticmethod
-#     def is_package(path):
-#         return path.endswith(CheckpointPackage.EXTENSION) and zipfile.is_zipfile(path)
-
-
 def train_model(model_definition,
+                model_kwargs,
                 train_kwargs,
                 checkpoint_path,
                 data_manager,
                 epochs=300,
                 deterministic=False,
-                delete_checkpoint=False):
+                test_fn=None):
+    if model_kwargs is None:
+        model_kwargs = {}
+    model_kwargs["output_size"] = data_manager.shape_y
+
     model_builder = get_model_builder(model_definition=model_definition,
                                       input_shape=data_manager.shape_x,
-                                      output_size=data_manager.shape_y)
+                                      **model_kwargs)
 
     best_model, best_model_path = lu.train_model(model=model_builder,
                                                  data_manager=data_manager,
@@ -119,82 +36,97 @@ def train_model(model_definition,
                                                  checkpoint_path=checkpoint_path,
                                                  deterministic=deterministic)
 
-    # package_path = convert_checkpoint(checkpoint_path=best_model_path,
-    #                                   input_shape=data_manager.shape_x,
-    #                                   output_size=data_manager.shape_y,
-    #                                   model_definition=model_definition,
-    #                                   train_kwargs=train_kwargs)
-    package_path = save_checkpoint_meta(checkpoint_path=best_model_path,
-                                        input_shape=data_manager.shape_x,
-                                        output_size=data_manager.shape_y,
-                                        model_definition=model_definition,
-                                        train_kwargs=train_kwargs)
-    if delete_checkpoint:
-        fu.delete(checkpoint_path)
+    checkpoint_meta = CheckpointMeta(best_model_path)
+    checkpoint_meta.save_meta(model_definition=model_definition,
+                              data_manager=data_manager,
+                              input_shape=data_manager.shape_x,
+                              model_kwargs=model_kwargs,
+                              train_kwargs=train_kwargs)
 
-    return package_path
+    if test_fn is not None:
+        checkpoint_meta.evaluate(test_fn)
+
+    return best_model, best_model_path
 
 
 META_SUFFIX = ".meta.json"
+RESULTS_SUFFIX = ".results.json"
 
 
-def save_checkpoint_meta(checkpoint_path, input_shape, output_size, model_definition, train_kwargs):
-    return ju.write_to({
-        "model_definition": model_definition,
-        "train_kwargs": train_kwargs,
-        "input_shape": input_shape,
-        "output_size": output_size,
-        "checkpoint_name": fu.get_file_name(checkpoint_path)
-    }, path=checkpoint_path + META_SUFFIX, pretty_print=True)
+class CheckpointMeta:
+    def __init__(self, checkpoint) -> None:
+        super().__init__()
+        self.checkpoint = checkpoint
+        self.metadata = None
+        self.performance = None
 
+    def save_meta(self,
+                  model_definition,
+                  data_manager,
+                  input_shape,
+                  model_kwargs,
+                  train_kwargs):
+        return ju.write_to({
+            "data_manager": data_manager,
+            "model_definition": model_definition,
+            "input_shape": input_shape,
+            "model_kwargs": model_kwargs,
+            "train_kwargs": train_kwargs,
+            "checkpoint_name": fu.get_file_name(self.checkpoint),
+            "timestamp": str(datetime.now())
+        }, path=self.checkpoint + META_SUFFIX, pretty_print=True)
 
-# def convert_checkpoint(checkpoint_path, input_shape, output_size, model_definition, train_kwargs):
-#     package = CheckpointPackage(model_definition=model_definition,
-#                                 train_kwargs=train_kwargs,
-#                                 input_shape=input_shape,
-#                                 output_size=output_size,
-#                                 checkpoint_path=checkpoint_path)
-#     path = package.save()
-#     return path
+    def load_model(self):
+        self.metadata = ju.read_file(self.checkpoint + META_SUFFIX)
 
+        model_definition = self.metadata.get("model_definition")
+        input_shape = self.metadata.get("input_shape")
 
-def load_checkpoint(checkpoint,
-                    model_definition=None,
-                    input_shape=None,
-                    output_size=None,
-                    train_kwargs=None):
+        model_kwargs = {}
+        if "model_kwargs" in self.metadata:
+            model_kwargs.update(self.metadata.get("model_kwargs"))
+        if "output_size" in self.metadata:
+            model_kwargs["output_size"] = self.metadata.get("output_size")
+        train_kwargs = self.metadata.get("train_kwargs")
 
-    if model_definition is None:
-        meta_file = ju.read_file(checkpoint + META_SUFFIX)
+        model_builder = get_model_builder(model_definition=model_definition,
+                                          input_shape=input_shape,
+                                          **model_kwargs)
 
-        model_definition = meta_file.get("model_definition")
-        input_shape = meta_file.get("input_shape")
-        output_size = meta_file.get("output_size")
-        train_kwargs = meta_file.get("train_kwargs")
+        return lu.load_model(model_or_class=model_builder,
+                             path=self.checkpoint,
+                             model_kwargs=train_kwargs,
+                             wrap=True)
 
-    model_builder = get_model_builder(model_definition=model_definition,
-                                      input_shape=input_shape,
-                                      output_size=output_size)
+    def evaluate(self, test_fn=None, test_results=None):
+        self.performance = test_fn(self.checkpoint) if test_fn is not None else test_results
+        if test_results is not None:
+            test_results["timestamp"] = str(datetime.now())
+        ju.write_to(self.performance,
+                    path=self.checkpoint + RESULTS_SUFFIX, pretty_print=True)
 
-    return lu.load_model(model_or_class=model_builder,
-                         path=checkpoint,
-                         model_kwargs=train_kwargs,
-                         wrap=True)
+        return self.performance
 
-    # if CheckpointPackage.is_package(checkpoint):
-    #     package = CheckpointPackage(checkpoint_path=checkpoint)
-    #     with package:
-    #         return load_checkpoint(model_definition=package.model_definition,
-    #                                input_shape=package.input_shape,
-    #                                output_size=package.output_size,
-    #                                train_kwargs=package.train_kwargs,
-    #                                checkpoint=package.checkpoint_file)
-    # else:
-    #     model_builder = get_model_builder(model_definition=model_definition,
-    #                                       input_shape=input_shape,
-    #                                       output_size=output_size)
-    # 
-    #     return lu.load_model(model_or_class=model_builder,
-    #                          path=checkpoint,
-    #                          model_kwargs=train_kwargs,
-    #                          wrap=True)
+    def get_performance(self,
+                        criteria=None):
+        if self.performance is None:
+            self.performance = ju.read_file(self.checkpoint + RESULTS_SUFFIX)
+        return self.performance if criteria is None else self.performance[criteria]
+
+    def create_datamanager(self, df):
+        data_manager = du.DataManager()
+
+        data_manager.set_config(self.metadata["data_manager"],
+                                play=False)
+
+        data_manager.df = df
+        data_manager.replay_config()
+
+        return data_manager
+
+    def run(self, df):
+        model = self.load_model()
+        data_manager = self.create_datamanager(df)
+        results = lu.run_model(model, data_manager)
+        return data_manager.decode_labels(results)
+
