@@ -10,9 +10,11 @@ import os
 import random as rn
 import pandas as pd
 
-import xutils.core.python_utils as pu
+import xutils.core.python_utils as pyu
 import xutils.core.file_utils as fu
 import xutils.data.numpy_utils as nu
+import xutils.data.pandas_utils as pu
+import xutils.data.json_utils as ju
 
 
 def set_random_seed(seed=1235):
@@ -93,7 +95,7 @@ def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_e
 
     if print_results:
         print("----Compare Results----")
-        pu.print_dict(results)
+        pyu.print_dict(results)
 
     return results
 
@@ -176,6 +178,7 @@ class DataManager:
                  data_enricher=None,
                  df=None) -> None:
         super().__init__()
+        self.output_type = None
         self.x = x
         self.y = y
         self.data_columns = data_columns
@@ -197,6 +200,10 @@ class DataManager:
         self.data_config = []
         self.loaded_data_config = []
 
+    def set_output_type(self, output_type):
+        self.output_type = output_type
+        self.property_config.append({"type": "set_output_type", "kwargs": {"output_type": self.output_type}})
+
     def load_data(self, *args, **kwargs):
         if self.data_loader is not None:
             self.data_loader(*args, **kwargs)
@@ -204,8 +211,10 @@ class DataManager:
             raise Exception("Data loader not set")
 
     def load_config(self, path, play=True):
-        with open(path, 'rb') as config_file:
-            config = pickle.load(config_file)
+        config = ju.read_file(path)
+        self.set_config(config, play)
+
+    def set_config(self, config, play=True):
         self.play_config(config["properties"])
 
         self.loaded_data_config = config["data"]
@@ -233,6 +242,12 @@ class DataManager:
         self.data_config = []
         self.play_config(self.loaded_data_config)
 
+    def to_json(self):
+        return {
+            "properties": self.property_config,
+            "data": self.data_config
+        }
+
     def dump_config(self, path):
         fu.create_parent_dirs(path)
         with open(path, 'wb') as config_file:
@@ -242,8 +257,10 @@ class DataManager:
             }, config_file)
 
     def set_shape(self, x=None, y=None):
-        if x is None and y is None:
+        if x is None:
             x = self.x[0].shape
+
+        if y is None:
             y = len(np.unique(self.y))
 
         self.shape_x = x
@@ -279,9 +296,8 @@ class DataManager:
 
     def scale_data(self, scaler=None):
         if scaler is None:
-            scaler = preprocessing.MinMaxScaler(feature_range=(0, 1))  # or StandardScaler?
-            scaler.fit(self.x)
-        self.x = scaler.transform(self.x)
+            scaler = nu.get_min_max(self.x)
+        self.x = nu.scale_min_max(self.x, scaler)
         self.data_config.append({"type": "scale_data", "kwargs": {"scaler": scaler}})
 
     def get_balanced_weights(self):
@@ -303,21 +319,32 @@ class DataManager:
         self.labels = np.unique(self.y, return_counts=False)
         return self.labels
 
-    def encode_labels(self):
-        label_encoder = preprocessing.OneHotEncoder(sparse=False, categories='auto')
-        self.set_label_encoder(label_encoder)
-        self.y = label_encoder.fit_transform(self.y.reshape(-1, 1))
+    def one_hot_encode_labels(self, num_classes=None):
+        if num_classes is None:
+            num_classes = nu.num_one_hot(self.y)
+        self.y = nu.one_hot(self.y, num_classes)
+        # self.data_config.append({"type": "one_hot_encode_labels", "kwargs": {"num_classes": num_classes}})
 
-    def decode_labels(self, x):
-        return self.label_encoder.inverse_transform(x)
+    def encode_labels(self, **kwargs):
+        if self.output_type == "categorical":
+            self.one_hot_encode_labels(**kwargs)
 
-    def set_label_encoder(self, label_encoder=None):
-        self.label_encoder = label_encoder
-        self.data_config.append({"type": "set_label_encoder", "kwargs": {"label_encoder": label_encoder}})
+    def decode_labels(self, y):
+        if self.output_type == "categorical":
+            return nu.one_hot_reverse(y)
+        else:
+            return y
 
-    def reshape(self, size=None):
-        self.x = self.x.reshape(*size)
-        self.data_config.append({"type": "reshape", "kwargs": {"size": size}})
+    # def set_label_encoder(self, label_encoder=None):
+    #     self.label_encoder = label_encoder
+    #     self.data_config.append({"type": "set_label_encoder", "kwargs": {"label_encoder": label_encoder}})
+
+    def reshape(self, x=None, y=None):
+        if x is not None:
+            self.x = self.x.reshape(x)
+        if y is not None:
+            self.y = self.y.reshape(y)
+        self.data_config.append({"type": "reshape", "kwargs": {"x": x, "y": y}})
 
     def modify_x(self, modifier):
         self.x = modifier(self.x)
@@ -329,12 +356,17 @@ class DataManager:
         self.df.drop(columns=[*columns], inplace=True, errors='ignore')
         self.data_config.append({"type": "drop_columns", "args": columns})
 
-    def data_from_column(self, start=None, end=None):
-        data = self.df.loc[:, start:end]
+    def data_from_column(self, start=None, end=None, without=None):
+        data = self.df
+        if start is not None and end is not None:
+            data = data.loc[:, start:end]
+        if without is not None:
+            data = data.drop(without, axis=1, errors="ignore")
         self.x = data.values
         self.labels = list(data.columns)
         self.data_columns = list(data.columns)
-        self.data_config.append({"type": "data_from_column", "kwargs": {"start": start, "end": end}})
+        self.data_config.append(
+            {"type": "data_from_column", "kwargs": {"start": start, "end": end, "without": without}})
 
     def label_from_column(self, column):
         self.y = self.df[column].values
@@ -345,7 +377,7 @@ class DataManager:
         rolling_x = []
         for i in range(window, len(self.x)):
             rolling_x.append(self.x[i - window:i])
-        
+
         self.x = rolling_x
         self.y = self.y[window:]
         self.data_config.append({"type": "rolling_data", "kwargs": {"window": window}})

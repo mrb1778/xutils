@@ -156,3 +156,48 @@ def remove_nan(x, replace_with=None):
 def print_all(d):
     with np.printoptions(threshold=np.inf):
         print(d)
+
+
+def get_min_max(x):
+    return list(zip(x.min(axis=0), x.max(axis=0)))
+
+
+def scale_min_max(x, min_max):
+    return np.column_stack([normalize_min_max(column, x_min, x_max)
+                            for column, (x_min, x_max) in zip(x.T, min_max)])
+
+
+def normalize_min_max(x, x_min=None, x_max=None):
+    if x_min is None and x_max is None:
+        x_min = x.min()
+        x_max = x.max()
+    # x -= x_min
+    # x *= norm_max - norm_min
+    # # x /= x_max - x_min
+    # x = np.divide(x, x_max - x_min, casting='unsafe')
+    # x += norm_min
+    numerator = x - x_min
+    denominator = x_max - x_min
+    return np.divide(numerator, denominator, out=np.zeros_like(x), where=denominator != 0)
+
+
+def one_hot_text(x):
+    unique, inverse = np.unique(x, return_inverse=True)
+    onehot = np.eye(unique.shape[0])[inverse]
+    return onehot, inverse
+
+
+def num_one_hot(x):
+    return int(np.max(x) + 1)
+
+
+def one_hot(x, num_classes=None):
+    if num_classes is None:
+        num_classes = num_one_hot(x)
+    num_classes = int(num_classes)
+    x = x.astype(int)
+    return np.squeeze(np.eye(num_classes)[x.reshape(-1)])
+
+
+def one_hot_reverse(x):
+    return np.argmax(x, axis=1)

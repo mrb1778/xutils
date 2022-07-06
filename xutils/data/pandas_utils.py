@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import xutils.core.file_utils as fu
 import xutils.core.python_utils as pyu
+import xutils.data.numpy_utils as nu
 
 
 def read(*paths) -> pd.DataFrame:
@@ -45,7 +46,7 @@ def cast_to(df: pd.DataFrame, cast_type, *columns):
         else:
             df[column] = df_column.astype(cast_type)
     return df
-                    
+
 
 def normalize_max(df: pd.DataFrame, *columns):
     for column in columns:
@@ -127,7 +128,7 @@ def describe_data(df: pd.DataFrame):
     print('Shape of data frame:')
     print(df.shape)
     print("Unique values:")
-    pyu.print_dict({col: df.loc[:,col].nunique() for col in df.columns})
+    pyu.print_dict({col: df.loc[:, col].nunique() for col in df.columns})
     print("Null Count:")
     print(df.isnull().sum())
     print("First 5:")
@@ -143,11 +144,11 @@ def moving_average(df: pd.DataFrame, column, new_column=None, time_frame=3, shif
     return df[column if new_column is None else new_column].rolling(time_frame).mean().shift(shift)
 
 
-def split_dataframe(df: pd.DataFrame, chunk_size = 10000):
+def split_dataframe(df: pd.DataFrame, chunk_size=10000):
     chunks = list()
     num_chunks = len(df) // chunk_size + 1
     for i in range(num_chunks):
-        chunks.append(df[i*chunk_size:(i+1)*chunk_size])
+        chunks.append(df[i * chunk_size:(i + 1) * chunk_size])
     return chunks
 
 
@@ -186,7 +187,7 @@ def sort(df: pd.DataFrame, column, set_index=False, asc=True):
 def reduce_memory_usage(df: pd.DataFrame, verbose=False):
     start_memory = None
     if verbose:
-        start_memory = df.memory_usage().sum() / 1024**2
+        start_memory = df.memory_usage().sum() / 1024 ** 2
         print(f"Memory usage of dataframe is {start_memory} MB")
 
     for col in df.columns:
@@ -217,7 +218,7 @@ def reduce_memory_usage(df: pd.DataFrame, verbose=False):
             df[col] = df[col].astype('category')
 
     if verbose:
-        end_memory = df.memory_usage().sum() / 1024**2
+        end_memory = df.memory_usage().sum() / 1024 ** 2
         print(f"Memory usage of dataframe after reduction {end_memory} MB")
         print(f"Reduced by {100 * (start_memory - end_memory) / start_memory} % ")
     return df
@@ -246,12 +247,17 @@ def add_calc_column(df, column_name, calc_fn, cleanup=False):
     return df
 
 
+def concat_unique(dfs):
+    df = pd.concat(dfs, axis=1)
+    return df.loc[:, ~df.columns.duplicated()]
+
+
 def read_enrich_write(source_data_path,
                       save_path,
                       enrich_fn,
                       post_loader_fn=None,
-                      update=False):
-
+                      update_if_older=True,
+                      force_update=False):
     def enrich_fn_wrapper(path):
         df = pd.read_csv(source_data_path)
         if post_loader_fn is not None:
@@ -264,7 +270,17 @@ def read_enrich_write(source_data_path,
         df.to_csv(path, index=False)
         return path
 
-    return fu.create_file_if(save_path, enrich_fn_wrapper, update)
+    if not fu.exists(save_path):
+        print("enrich", save_path, update_if_older, fu.exists(save_path), force_update or (update_if_older and
+                                                                                           (not fu.exists(save_path) or
+                                                                                            fu.modified_after(
+                                                                                                source_data_path,
+                                                                                                save_path))))
+    return fu.create_file_if(save_path,
+                             enrich_fn_wrapper,
+                             force_update or (update_if_older and
+                                              (not fu.exists(save_path) or
+                                               fu.modified_after(source_data_path, save_path))))
 
 
 def rows_cols(df, row_start, row_end=None, cols=None):
@@ -277,3 +293,23 @@ def cols(df, *cols):
 
 def quartiles(df, column, points):
     return df[column].quantile(points if points else [0.25, 0.5, 0.75]).values
+
+
+def get_columns_by_type(df, types):
+    return df.select_dtypes(include=types)
+
+
+def get_min_max(df):
+    return nu.get_min_max(df)
+
+
+def scale_min_max(df, min_max):
+    df_scaled = df.copy()
+
+    # apply normalization techniques
+    for column, index in enumerate(df_scaled.columns):
+        col_min = min_max[index][0]
+        col_max = min_max[index][1]
+        df_scaled[column] = (df_scaled[column] - col_min) / (col_max - col_min)
+
+    return df_scaled
