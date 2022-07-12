@@ -240,6 +240,7 @@ class GoalRegistry:
     SCOPE_DEFAULT = "__default__"
 
     def __init__(self):
+        self.trace = False
         self._goals: Dict[str, Dict[str, GoalDefinition]] = {}
         self.current_scope = GoalScope(self, scope=self.SCOPE_DEFAULT)
 
