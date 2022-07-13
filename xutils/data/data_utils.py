@@ -261,7 +261,8 @@ class DataManager:
             x = self.x[0].shape
 
         if y is None:
-            y = len(np.unique(self.y))
+            first_y = self.y[0]
+            y = first_y.shape[0] if isinstance(first_y, np.ndarray) else 1
 
         self.shape_x = x
         self.shape_y = y
@@ -326,14 +327,25 @@ class DataManager:
         # self.data_config.append({"type": "one_hot_encode_labels", "kwargs": {"num_classes": num_classes}})
 
     def encode_labels(self, **kwargs):
-        if self.output_type == "categorical":
+        if self.output_type == "onehot":
             self.one_hot_encode_labels(**kwargs)
 
     def decode_labels(self, y):
-        if self.output_type == "categorical":
+        if self.output_type == "onehot":
             return nu.one_hot_reverse(y)
+        elif self.output_type == "binary":
+            return y.round()
         else:
             return y
+
+    def label_confidence(self, y):
+        # todo: fully implement
+        if self.output_type == "onehot":
+            return nu.one_hot_confidence(y)
+        elif self.output_type == "binary":
+            return nu.binary_confidence(y)
+        else:
+            return 1
 
     # def set_label_encoder(self, label_encoder=None):
     #     self.label_encoder = label_encoder

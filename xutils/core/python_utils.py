@@ -98,10 +98,10 @@ def print_dicts(dicts, sort_on=None):
     return output
 
 
-def print_dict(d: dict, key_header="Key", value_header="Value"):
+def print_dict(d: dict, key_header="Key", value_header="Value", ignore_none=False):
     import tabulate
 
-    output = tabulate.tabulate(d.items(), [key_header, value_header])
+    output = tabulate.tabulate(d.items(), [key_header, value_header], tablefmt='fancy_grid')
     print(output)
     return output
 

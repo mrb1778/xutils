@@ -25,6 +25,7 @@ def compute_metrics(model,
     criterion = nn.CrossEntropyLoss()
 
     score_list = torch.Tensor([]).to(device)
+    #  todo: determine types
     pred_list = torch.Tensor([]).to(device).long()
     target_list = torch.Tensor([]).to(device).long()
     path_list = []

@@ -115,18 +115,20 @@ class CheckpointMeta:
 
     def create_datamanager(self, df):
         data_manager = du.DataManager()
-
         data_manager.set_config(self.metadata["data_manager"],
                                 play=False)
-
         data_manager.df = df
         data_manager.replay_config()
 
         return data_manager
 
-    def run(self, df):
+    def run(self, df, confidence=False):
         model = self.load_model()
         data_manager = self.create_datamanager(df)
         results = lu.run_model(model, data_manager)
-        return data_manager.decode_labels(results)
+        decoded_labels = data_manager.decode_labels(results)
+        if confidence:
+            return decoded_labels, data_manager.label_confidence(results)
+        else:
+            return decoded_labels
 

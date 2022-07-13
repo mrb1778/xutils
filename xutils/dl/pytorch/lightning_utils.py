@@ -1,20 +1,27 @@
 import os
 import time
+from typing import Tuple
 
 from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
-from torchmetrics import Precision, Recall, Accuracy
+from torchmetrics import Precision, Recall, Accuracy, MetricTracker
+from torchmetrics.functional import stat_scores
+
 import pytorch_lightning as pl
 
 from torch.utils.data import DataLoader, Dataset
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
 
 from xutils.core.python_utils import getattr_ignore_case
 import xutils.data.data_utils as du
 import xutils.dl.pytorch.utils as pyu
 import xutils.core.file_utils as fu
+# import xutils.data.plot_utils as pltu
+
+import numpy as np
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -28,6 +35,7 @@ class WrapperModule(LightningModule):
         self.learning_rate = learning_rate
         self.save_hyperparameters('learning_rate', 'loss_fn', 'batch_size')
 
+        # https://sparrow.dev/cross-entropy-loss-in-pytorch/
         if loss_fn is None:
             # todo: auto choose based on type flag
             self.loss_fn = F.cross_entropy
@@ -82,7 +90,7 @@ class WrapperModule(LightningModule):
     #
     #     self.log("loss", loss)
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx):
         x, y = batch
         y_hat = self.model(x)
 
@@ -94,7 +102,17 @@ class WrapperModule(LightningModule):
         # self.log("val_loss", self.loss(y_hat, y))
         # self.log("val_acc", self.accuracy(y_hat, torch.argmax(y.squeeze(), dim=1)))
         self.log("val_loss", self.loss(y_hat, y))
-        self.log("val_acc", self.accuracy(y_hat, torch.argmax(y.squeeze(), dim=1)))
+        # todo: changes based on loss fn? int vs not?
+        # self.log("val_acc", self.accuracy(y_hat, y.int()))
+        # print("104 dtype", y_hat.dtype, y.dtype)
+        # print("104 type", type(y))
+        # exit()
+        # todo: see if alwways int? for y https://torchmetrics.readthedocs.io/en/stable/pages/classification.html#using-the-multiclass-parameter
+        # self.log("val_acc", self.accuracy(y_hat, y.int()))
+        # todo: custom tf onehot handling
+        # todo: data type handling
+        self.log("val_acc", self.accuracy(y_hat, torch.argmax(y.squeeze(), dim=1) if y.shape[1] > 1 else y.int()))
+
         # if self.recall:
         #     metrics["recall"] = self.recall(y_hat, y)
         # if self.precision:
@@ -135,6 +153,8 @@ class WrapperModule(LightningModule):
     #     # self.logger.experiment.add_figure("Confusion matrix", fig_, self.current_epoch)
 
     def loss(self, y_hat, y):
+        # todo: figure out single dimensions
+        # return self.loss_fn(y_hat, y.unsqueeze(1))
         return self.loss_fn(y_hat, y)
 
 
@@ -167,7 +187,12 @@ class NumpyXYDataset(Dataset):
         return len(self.x)
 
     def __getitem__(self, idx):
-        return torch.from_numpy(self.x[idx]).float(), torch.from_numpy(self.y[idx])
+        y = self.y[idx]
+        # todo: determine type?
+        return torch.from_numpy(self.x[idx]).float(), \
+            torch.from_numpy(y) if isinstance(y, np.ndarray) else \
+            torch.tensor([y]).float()
+        # return torch.from_numpy(self.x[idx]).float(), torch.from_numpy(self.y[idx])
 
 
 class DatasetDataModule(LightningDataModule):
@@ -388,6 +413,7 @@ def create_data_module(x_train=None, y_train=None,
             x_test = data_manager.test.x
             y_test = data_manager.test.y
 
+    # todo: get dataset generator based on x type or convert on the fly based on type
     if dataset_fn is None:
         dataset_fn = NumpyXYDataset
 
@@ -396,3 +422,28 @@ def create_data_module(x_train=None, y_train=None,
         test_dataset=dataset_fn(x_test, y_test) if x_test is not None else None,
         val_dataset=dataset_fn(x_validation, y_validation) if x_validation is not None else None
     )
+
+
+def overfit_and_get_averaged_loss(model, data_loader, steps=100, plot=True):
+    """Function to overfit the model on a small set of data and return
+       loss per steps to determine if there is a bug or not"""
+    # Seed for reproducibility
+    set_deterministic()
+    # Create a metric tracker to get back the loss for each step after training
+    metric_tracker = MetricTracker()
+    # Create a dataloader for training
+    # Creaate a trainer to overfit 10% of the data
+    trainer = pl.Trainer(overfit_batches=0.1, callbacks=metric_tracker)
+    # Train the model (try to overfit 10% of the data)
+    trainer.fit(model, train_dataloaders=data_loader)
+
+    # Return the moving average over the loss with a window of 100 steps
+    loss_running_mean = np.convolve(metric_tracker.collection, np.ones(steps)/steps, mode='valid')
+
+    # if plot:
+    #     pltu.plot(data=loss_running_mean,
+    #               title="With a buggy model",
+    #               x_label="Training steps",
+    #               y_label="Averaged loss")
+    return loss_running_mean
+
