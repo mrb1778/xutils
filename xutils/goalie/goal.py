@@ -8,63 +8,80 @@ import xutils.core.python_utils as pu
 import xutils.data.json_utils as ju
 
 
+class GoalIdentifier:
+
+    def __init__(self, name, scope) -> None:
+        super().__init__()
+        self.name = name
+        self.scope = scope
+
+    def __str__(self) -> str:
+        return F'{self.scope}:{self.name}' \
+            if self.scope is not None else self.name
+
+
+def _get_goal_ids(goals, scope):
+    if goals is None:
+        return []
+    else:
+        if not isinstance(goals, (list, tuple)):
+            goals = [goals]
+        return [_get_goal_id(g, scope) for g in goals]
+
+
+def _get_goal_id(goal_id, scope):
+    if isinstance(goal_id, GoalIdentifier):
+        return goal_id
+    elif isinstance(goal_id, FunctionType):
+        if goal_id.__goal_identifier__ is None:
+            raise MissingGoal(goal_id)
+        return goal_id.__goal_identifier__
+    elif isinstance(goal_id, str):
+        return GoalIdentifier(goal_id, scope)
+
+
 class GoalDefinition:
-    def __init__(self, name, scope=None, pre=None, post=None, params=None, refs=None, fun=None,
-                 goal_lookup=None) -> None:
+    def __init__(self, name, scope=None, pre=None, post=None, params=None, refs=None, fun=None) -> None:
         super().__init__()
 
         self.scope = scope
         self.name = name
 
-        if pre is None:
-            pre = []
-        if not isinstance(pre, (list, tuple)):
-            pre = [pre]
-        for i, ref_goal in enumerate(pre):
-            if isinstance(ref_goal, FunctionType):
-                pre[i] = goal_lookup(ref_goal)
-        self.pre = pre
-
-        if post is None:
-            post = []
-        if not isinstance(post, (list, tuple)):
-            post = [post]
-        for i, ref_goal in enumerate(post):
-            if isinstance(ref_goal, FunctionType):
-                post[i] = goal_lookup(ref_goal)
-        self.post = post
+        self.pre = _get_goal_ids(pre, scope)
+        self.post = _get_goal_ids(post, scope)
 
         if params is None:
-            params = dict()
-        for param_name, param_value in params.items():
-            if isinstance(param_value, (str, FunctionType)):
-                if isinstance(param_value, FunctionType):
-                    param_value = goal_lookup(param_value)
-                params[param_name] = GoalParam(param_value)
-            elif isinstance(param_value, GoalParam) and param_value.fun_def is not None:
-                param_value.name = goal_lookup(param_value.fun_def)
-        self.params = params
+            self.params = dict()
+        else:
+            self.params = {
+                param_name: param_value
+                if isinstance(param_value, ParamType)
+                else GoalParam(_get_goal_id(param_value, scope))
+                for param_name, param_value in params.items()
+            }
+            # for param_name, param_value in params.items():
+            #     if isinstance(param_value, (str, FunctionType)):
+            #         if isinstance(param_value, FunctionType):
+            #             param_value = goal_lookup(param_value)
+            #         params[param_name] = GoalParam(param_value)
+            #     elif isinstance(param_value, GoalParam) and param_value.fun_def is not None:
+            #         param_value.name = goal_lookup(param_value.fun_def)
+            # self.params = params
 
-        if refs is None:
-            refs = []
-        if not isinstance(refs, (list, tuple)):
-            refs = [refs]
-        for i, ref_goal in enumerate(refs):
-            if isinstance(ref_goal, FunctionType):
-                refs[i] = goal_lookup(ref_goal)
-        self.refs = refs
+        self.refs = _get_goal_ids(refs, scope)
 
         if fun is not None:
             for param in pu.params(fun).values():
                 param_name = param["name"]
-                if param_name not in params:
+                if param_name not in self.params:
                     if param_name == StackParam.DEFAULT_NAME:
-                        params[param_name] = StackParam(param_name)
+                        self.params[param_name] = StackParam(param_name)
                     else:
-                        params[param_name] = InputParam(name=param_name,
-                                                        required=param["required"],
-                                                        default=param["default"],
-                                                        data_type=param["type"])
+                        self.params[param_name] = InputParam(name=param_name,
+                                                             required=param["required"],
+                                                             default=param["default"],
+                                                             data_type=param["type"])
+
         self.fun = fun
 
     def execute(self, possible_kwargs):
@@ -167,12 +184,10 @@ class InputParam(ParamType):
 
 
 class GoalParam(ParamType):
-    def __init__(self, name: Any, **kwargs) -> None:
-        super().__init__(name if isinstance(name, str) else name.__name__)
-        if isinstance(name, FunctionType):
-            self.fun_def = name
-        else:
-            self.fun_def = None
+    def __init__(self, goal_id: Any, scope=None, **kwargs) -> None:
+        super().__init__(goal_id)
+        self.goal_identifier = _get_goal_id(goal_id, scope)
+
         self.kwargs = kwargs
 
     def to_json(self):
@@ -242,13 +257,14 @@ class GoalRegistry:
     def __init__(self):
         self.trace = False
         self._goals: Dict[str, Dict[str, GoalDefinition]] = {}
-        self.current_scope = GoalScope(self, scope=self.SCOPE_DEFAULT)
+        # self.current_scope = GoalScope(self, scope=self.SCOPE_DEFAULT)
 
         self.trace: False
 
     def goals(self, scope=None, create=False):
         if scope is None:
-            scope = self.current_scope.scope
+            # scope = self.current_scope.scope
+            scope = self.SCOPE_DEFAULT
 
         if scope not in self._goals:
             if create:
@@ -264,13 +280,15 @@ class GoalRegistry:
     def goal_definitions(self, scope=None):
         return list(self.goals(scope).values())
 
-    def _get_goal_for_fun(self, fun: FunctionType, scope=None):
-        goal_name = fun.__name__
-        assert self.definition(goal_name, scope=scope)
-        return goal_name
+    def _get_goal_for_fun(self, fun: FunctionType):
+        goal_id = fun.__goal_identifier__
+        if self.definition(goal_id) is None:
+            raise MissingGoal(goal_id)
+        return goal_id
 
     def reset(self, scope=None):
-        if scope == self.SCOPE_ALL or (scope is None and self.current_scope.scope == self.SCOPE_DEFAULT):
+        if scope == self.SCOPE_ALL or scope is None:
+            #  and self.current_scope.scope == self.SCOPE_DEFAULT):
             self._goals.clear()
         elif scope in self._goals:
             self._goals[scope].clear()
@@ -300,8 +318,7 @@ class GoalRegistry:
                                       post=post,
                                       params=params,
                                       fun=fun,
-                                      refs=refs,
-                                      goal_lookup=lambda find_name: self._get_goal_for_fun(find_name, scope=scope))
+                                      refs=refs)
 
         scoped_goals = self.goals(scope=scope, create=True)
         if not overwrite and goal_def.name in scoped_goals:
@@ -311,6 +328,8 @@ class GoalRegistry:
 
     def __call__(self, name: str, pre=None, post=None, params=None, refs=None, scope=None):
         def decorator_goal(fun):
+            goal_identifier = GoalIdentifier(name, scope)
+            fun.__goal_identifier__ = goal_identifier
             self.add(name,
                      fun=fun,
                      pre=pre,
@@ -323,11 +342,17 @@ class GoalRegistry:
             def wrapper(**kwargs):
                 return self.run(name, scope=scope, **kwargs)
 
+            wrapper.__goal_identifier__ = goal_identifier
             return wrapper
 
         return decorator_goal
 
     def definition(self, name, scope=None, fail_if_missing=True) -> GoalDefinition:
+        if isinstance(name, FunctionType):
+            name = self._get_goal_for_fun(name)
+        if isinstance(name, GoalIdentifier):
+            scope = name.scope
+            name = name.name
         scoped_goals = self.goals(scope=scope)
         if fail_if_missing and (scoped_goals is None or name not in scoped_goals.keys()):
             raise MissingGoal(name)
@@ -337,7 +362,7 @@ class GoalRegistry:
     def requirements(self, name, scope=None):
         goal_def = self.definition(name, scope=scope)
 
-        full_requirements = {name}
+        full_requirements = {name.name if isinstance(name, GoalIdentifier) else name}
 
         for pre in goal_def.pre:
             full_requirements.update(self.requirements(pre, scope=scope))
@@ -439,17 +464,17 @@ class GoalRegistry:
             updated_kwargs[ResultsParam.ALL_KWARGS_PARAM] = results
 
             for param_name, param_value in goal_def.params_of_type(GoalParam).items():
-                goal_name = param_value.name
+                goal_identifier = param_value.goal_identifier
                 try:
                     fun_kwargs = {**param_value.kwargs, **fun_kwargs}
                     updated_kwargs[param_name] = self._run_with_context(goal_context=goal_context,
-                                                                        name=goal_name,
+                                                                        name=goal_identifier,
                                                                         scope=scope,
                                                                         fun_kwargs=fun_kwargs)
                 except Exception as e:
                     raise UnmetGoal(name,
                                     phase="param",
-                                    message=f"Error in param {name}({param_name}:{goal_name}) -> {e}") from e
+                                    message=f"Error in param {name}({param_name}:{goal_identifier}) -> {e}") from e
 
             if self.trace:
                 print((goal_context["level"] * 5) * " ", "@Goal Run", name)
@@ -667,18 +692,19 @@ class GoalScope:
         self.scope = scope
         self.previous_scope = None
 
-    def __enter__(self):
-        self.activate()
-
-    def activate(self):
-        self.previous_scope = self.goal_registry.current_scope
-        self.goal_registry.current_scope = self
-
-    def __exit__(self, *args):
-        self.deactivate()
-
-    def deactivate(self):
-        self.goal_registry.current_scope = self.previous_scope
+    # todo: bring back for default scope
+    # def __enter__(self):
+    #     self.activate()
+    #
+    # def activate(self):
+    #     self.previous_scope = self.goal_registry.current_scope
+    #     self.goal_registry.current_scope = self
+    #
+    # def __exit__(self, *args):
+    #     self.deactivate()
+    #
+    # def deactivate(self):
+    #     self.goal_registry.current_scope = self.previous_scope
 
 
 goal = GoalRegistry()
