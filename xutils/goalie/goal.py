@@ -293,8 +293,8 @@ class GoalRegistry:
         elif scope in self._goals:
             self._goals[scope].clear()
 
-    def scope(self, scope):
-        return GoalScope(self, scope=scope)
+    # def scope(self, scope):
+    #     return GoalScope(self, scope=scope)
 
     def add(self,
             name=None,
@@ -685,26 +685,25 @@ class GoalRegistry:
     def debug(self, on=True):
         self.trace = on
 
-
-class GoalScope:
-    def __init__(self, goal_registry: GoalRegistry, scope: str):
-        self.goal_registry = goal_registry
-        self.scope = scope
-        self.previous_scope = None
-
-    # todo: bring back for default scope
-    # def __enter__(self):
-    #     self.activate()
-    #
-    # def activate(self):
-    #     self.previous_scope = self.goal_registry.current_scope
-    #     self.goal_registry.current_scope = self
-    #
-    # def __exit__(self, *args):
-    #     self.deactivate()
-    #
-    # def deactivate(self):
-    #     self.goal_registry.current_scope = self.previous_scope
+# todo: bring back for default scope
+# class GoalScope:
+#     def __init__(self, goal_registry: GoalRegistry, scope: str):
+#         self.goal_registry = goal_registry
+#         self.scope = scope
+#         self.previous_scope = None
+#
+#     def __enter__(self):
+#         self.activate()
+#
+#     def activate(self):
+#         self.previous_scope = self.goal_registry.current_scope
+#         self.goal_registry.current_scope = self
+#
+#     def __exit__(self, *args):
+#         self.deactivate()
+#
+#     def deactivate(self):
+#         self.goal_registry.current_scope = self.previous_scope
 
 
 goal = GoalRegistry()
