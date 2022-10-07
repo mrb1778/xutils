@@ -341,7 +341,14 @@ class GoalRegistry:
 
         scoped_goals[goal_def.name] = goal_def
 
-    def __call__(self, function: Callable = None, name: str = None, pre=None, post=None, params=None, refs=None, scope=None):
+    def __call__(self,
+                 function: Callable = None,
+                 name: str = None,
+                 pre=None,
+                 post=None,
+                 params=None,
+                 refs=None,
+                 scope=None):
         def decorator_goal(fun: Callable):
             nonlocal name
             if name is None:
