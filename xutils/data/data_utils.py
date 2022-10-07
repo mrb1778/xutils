@@ -66,8 +66,16 @@ def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_e
         "Size": len(actual),
         # "Actual Shape": actual.shape,
         # "Predicted Shape": predicted.shape,
-        "First 5 Actual": actual[0:5],
-        "First 5 Predicted": predicted[0:5],
+        "Examples": {
+            "First 5": {
+                "Actual": actual[0:5],
+                "Predicted": predicted[0:5]
+            },
+            "Last 5": {
+                "Actual": actual[-5:],
+                "Predicted": predicted[-5:]
+            }
+        },
         "Base": nu.count_unique(actual),
         "Match": nu.count_unique(predicted[e]),
         "Test": nu.count_unique(predicted),
@@ -83,15 +91,15 @@ def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_e
         "Cohen's Kappa": skm.cohen_kappa_score(actual, predicted),
     }
 
-    conf_mat = skm.confusion_matrix(actual, predicted)
-    results["Confusion Matrix"] = conf_mat
-    recalls = []
-    for i, row in enumerate(conf_mat):
-        recall = np.round(row[i] / np.sum(row), 2)
-        results[f"Recall {i}"] = recall
-        recalls.append(recall)
-
-    results["Recall Average"] = sum(recalls) / len(recalls)
+    # conf_mat = skm.confusion_matrix(actual, predicted)
+    # results["Confusion Matrix"] = conf_mat
+    # recalls = []
+    # for i, row in enumerate(conf_mat):
+    #     recall = np.round(row[i] / np.sum(row), 2)
+    #     results[f"Recall {i}"] = recall
+    #     recalls.append(recall)
+    #
+    # results["Recall Average"] = sum(recalls) / len(recalls)
 
     if print_results:
         print("----Compare Results----")

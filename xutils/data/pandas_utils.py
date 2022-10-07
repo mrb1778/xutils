@@ -1,6 +1,8 @@
 import os
 import pandas as pd
 import numpy as np
+import typing
+
 import xutils.core.file_utils as fu
 import xutils.core.python_utils as pyu
 import xutils.data.numpy_utils as nu
@@ -244,6 +246,7 @@ def add_calc_column(df, column_name, calc_fn, cleanup=False):
     df[column_name] = calc_fn(df)
     if cleanup:
         drop_na(df)
+    print("add_calc_column post clean", "column_name", column_name, df.shape)
     return df
 
 
@@ -252,12 +255,12 @@ def concat_unique(dfs):
     return df.loc[:, ~df.columns.duplicated()]
 
 
-def read_enrich_write(source_data_path,
-                      save_path,
-                      enrich_fn,
-                      post_loader_fn=None,
-                      update_if_older=True,
-                      force_update=False):
+def read_enrich_write(source_data_path: str,
+                      save_path: str,
+                      enrich_fn: typing.Callable[[pd.DataFrame], pd.DataFrame],
+                      post_loader_fn: typing.Callable[[pd.DataFrame], pd.DataFrame] = None,
+                      update_if_older: bool = True,
+                      force_update: bool = False):
     def enrich_fn_wrapper(path):
         df = pd.read_csv(source_data_path)
         if post_loader_fn is not None:
@@ -270,17 +273,11 @@ def read_enrich_write(source_data_path,
         df.to_csv(path, index=False)
         return path
 
-    if not fu.exists(save_path):
-        print("enrich", save_path, update_if_older, fu.exists(save_path), force_update or (update_if_older and
-                                                                                           (not fu.exists(save_path) or
-                                                                                            fu.modified_after(
-                                                                                                source_data_path,
-                                                                                                save_path))))
     return fu.create_file_if(save_path,
                              enrich_fn_wrapper,
-                             force_update or (update_if_older and
-                                              (not fu.exists(save_path) or
-                                               fu.modified_after(source_data_path, save_path))))
+                             update=force_update or (update_if_older and
+                                                     (not fu.exists(save_path) or
+                                                      fu.modified_after(source_data_path, save_path))))
 
 
 def rows_cols(df, row_start, row_end=None, cols=None):

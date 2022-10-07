@@ -4,25 +4,27 @@ import os
 import shutil
 import tarfile
 import tempfile
+from typing import Union, Optional, List, Set
 
 from urllib.request import urlopen
 
 from pathlib import Path, PurePath
+from datetime import datetime
 
 
-def path_inspect(path, search="*", trim_path=True):
+def path_inspect(path: str, search="*", trim_path=True) -> None:
     for file_name in Path(path).rglob(search):
         print(str(file_name)[len(path) + 1:] if trim_path else file_name)
 
 
-def list_paths(path,
-               extension=None,
-               sort_name=True,
-               sort_size=False,
-               sort_updated=False,
-               recursive=False,
-               only_directories=False,
-               just_name=False):
+def list_paths(path: str,
+               extension: str = None,
+               sort_name: bool = True,
+               sort_size: bool = False,
+               sort_updated: bool = False,
+               recursive: bool = False,
+               only_directories: bool = False,
+               just_name: bool = False) -> Optional[List[str]]:
     paths = glob.glob(os.path.join(path, "*" if extension is None else f"*.{extension}"),
                       recursive=recursive)
     if only_directories:
@@ -40,7 +42,7 @@ def list_paths(path,
     return paths
 
 
-def get_file_name(path, strip_extension=False):
+def get_file_name(path: str, strip_extension: bool = False) -> str:
     name = Path(path).name
     if strip_extension:
         return name.split(".")[0]
@@ -48,26 +50,26 @@ def get_file_name(path, strip_extension=False):
         return name
 
 
-def exists(path):
+def exists(path: str) -> bool:
     return os.path.exists(path)
 
 
-def ensure_exists(path):
+def ensure_exists(path: str) -> None:
     if not os.path.exists(path):
         os.makedirs(path)
 
 
-def delete(path):
+def delete(path: str) -> None:
     Path(path).unlink()
 
 
-def delete_files(path):
+def delete_files(path: str) -> None:
     for f in Path(path).glob("*"):
         if f.is_file():
             f.unlink()
 
 
-def delete_all(path):
+def delete_all(path: str) -> None:
     for path in Path(path).glob("**/*"):
         if path.is_file():
             path.unlink()
@@ -75,14 +77,14 @@ def delete_all(path):
             shutil.rmtree(path)
 
 
-def move(path, to):
+def move(path: str, to: str):
     ensure_exists(to)
     path = Path(path)
     # return str(path.rename(os.path.join(Path(to), path.name))) --> permission problems
     return shutil.move(path, os.path.join(Path(to), path.name))
 
 
-def copy(path, to, with_prefix=False):
+def copy(path: str, to: str, with_prefix: bool = False):
     ensure_exists(to)
 
     path = Path(path)
@@ -94,7 +96,7 @@ def copy(path, to, with_prefix=False):
         return shutil.copy(str(path), os.path.join(Path(to), path.name))
 
 
-def download_and_unzip(url):
+def download_and_unzip(url: str) -> None:
     with tempfile.TemporaryFile() as tmp:
         shutil.copyfileobj(urlopen(url), tmp)
         tmp.seek(0)
@@ -103,7 +105,7 @@ def download_and_unzip(url):
         tar.close()
 
 
-def count_files(directory):
+def count_files(directory: str) -> int:
     """Get number of files by searching directory recursively"""
     if not os.path.exists(directory):
         return 0
@@ -114,31 +116,36 @@ def count_files(directory):
     return count
 
 
-def count_directories(directory):
+def count_directories(directory: str) -> int:
     return len(glob.glob(directory + "/*"))
 
 
-def create_file_if(path, create_fn, update=False):
-    if not os.path.isfile(path) or update:
+def create_file_if(path: str,
+                   create_fn,
+                   update_if_older_than: int = None,
+                   update=False):
+    if update or \
+            not os.path.isfile(path) or \
+            (update_if_older_than is not None and modified_days_ago(path) > update_if_older_than):
         create_parent_dirs(path)
         return create_fn(path)
     else:
         return path
 
 
-def create_parent_dirs(path):
+def create_parent_dirs(path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
 
-def create_dirs(path):
+def create_dirs(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
-def remove_dirs(path):
+def remove_dirs(path: str) -> None:
     shutil.rmtree(path)
 
 
-def get_difference(file1, file2, print_results=True):
+def get_difference(file1: str, file2: str, print_results: bool = True) -> Set:
     check = {}
     for file in [file1, file2]:
         with open(file, 'r') as f:
@@ -156,11 +163,11 @@ def get_difference(file1, file2, print_results=True):
 FILENAME_SAFE_CHARS = (' ', '.', '_')
 
 
-def to_file_name(file_name, replace_with="_"):
+def to_file_name(file_name: str, replace_with: str = "_"):
     return replace_with.join(c for c in file_name if c.isalnum() or c in FILENAME_SAFE_CHARS).rstrip()
 
 
-def script_path(file=None):
+def script_path(file: str = None):
     return os.path.dirname(
         os.path.realpath(
             __file__ if file is None else file))
@@ -182,9 +189,13 @@ def add_seekable_to_file(f):
     return f
 
 
-def modified(path):
+def modified(path: str):
     return Path(path).stat().st_mtime
 
 
-def modified_after(after, before):
+def modified_days_ago(path: str) -> int:
+    return (datetime.now() - datetime.fromtimestamp(modified(path))).days
+
+
+def modified_after(after, before) -> bool:
     return modified(after) > modified(before)

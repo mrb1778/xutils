@@ -22,6 +22,21 @@ class DisablePrintStatements:
         sys.stdout = self._original_stdout
 
 
+def get_functions(module, private=False, as_dict=False):
+    if isinstance(module, str):
+        module = __import__(module, fromlist=[''])
+
+    functions = inspect.getmembers(module, inspect.isfunction)
+
+    if not private:
+        functions = [(key, value)
+                     for (key, value) in functions
+                     if not key.startswith("_")]
+    if as_dict:
+        return {key: value
+                for (key, value) in functions}
+
+
 def params_has_kwargs(fun: FunctionType) -> bool:
     sig = inspect.signature(fun)
     for p in sig.parameters.values():
@@ -34,7 +49,7 @@ def param_names(fun: FunctionType, required=True, optional=True) -> list:
         p.name
         for p in sig.parameters.values()
         if (required and p.default == inspect.Parameter.empty)
-        or (optional and p.kind != inspect.Parameter.empty)
+           or (optional and p.kind != inspect.Parameter.empty)
     ]
 
 
@@ -44,7 +59,7 @@ def param_defaults(fun: FunctionType, required=True, optional=True) -> dict:
         p.name: p.default if p.default != inspect.Parameter.empty else None
         for p in sig.parameters.values()
         if (required and p.default == inspect.Parameter.empty)
-        or (optional and p.kind != inspect.Parameter.empty)
+           or (optional and p.kind != inspect.Parameter.empty)
     }
 
 
@@ -59,7 +74,7 @@ def params(fun: FunctionType, required=True, optional=True) -> dict:
         }
         for p in sig.parameters.values()
         if (required and p.default == inspect.Parameter.empty)
-        or (optional and p.kind != inspect.Parameter.empty)
+           or (optional and p.kind != inspect.Parameter.empty)
     }
 
 
@@ -217,7 +232,7 @@ def parse_unknown_args(parser):
 
 
 def grouped(iterable, n):
-    return zip(*[iter(iterable)]*n)
+    return zip(*[iter(iterable)] * n)
 
 
 def safe_eval(code: str, params: dict = None):
@@ -385,4 +400,3 @@ def free_memory():
 
 def iterable(arg):
     return isinstance(arg, collections.Iterable) and not isinstance(arg, six.string_types)
-

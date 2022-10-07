@@ -1,14 +1,15 @@
+import time
+import typing
+
 import numpy as np
 import pandas as pd
+import ta
 import ta.momentum as momentum
 import ta.trend as trend
 import ta.volatility as volatility
 import ta.volume as volume
 from stockstats import StockDataFrame as sdf
 import plotly.graph_objects as go
-import re
-
-import xutils.data.pandas_utils as pu
 
 BUY = 2
 HOLD = 1
@@ -81,13 +82,19 @@ SELL = 0
 
 # Technical indicators
 
-def calc_intervals(df, intervals, prefix, calc_fn, **kwargs):
+def calc_intervals(df: pd.DataFrame,
+                   intervals: typing.Iterable[int],
+                   prefix: str,
+                   calc_fn,
+                   **kwargs) -> typing.Dict[str, pd.Series]:
     return {f"{prefix}_{i}": calc_fn(df, i, **kwargs)
             for i in intervals}
 
 
 # not used
-def rsi(df, intervals, col_name="close"):
+def rsi(df: pd.DataFrame,
+        intervals: typing.Iterable[int],
+        col_name: str = "close") -> None:
     """
     stockstats lib seems to use 'close' column by default so col_name
     not used here.
@@ -104,7 +111,13 @@ def rsi(df, intervals, col_name="close"):
         df['rsi_' + str(intervals[0])] = momentum.rsi(df[col_name], i, fillna=True)
 
 
-def rsi_smooth(df, intervals, col_name="close"):
+def rsi_ta(df: pd.DataFrame, interval: int, col_name: str) -> pd.Series:
+    return momentum.stochrsi(df[col_name], interval, fillna=True)
+
+
+def rsi_smooth(df: pd.DataFrame,
+               intervals: typing.Iterable[int],
+               col_name: str = "close") -> typing.Dict[str, pd.Series]:
     """
     Momentum indicator
     As per https://www.investopedia.com/terms/r/rsi.asp
@@ -136,18 +149,18 @@ def rsi_smooth(df, intervals, col_name="close"):
 
         if rolling_count == 0:
             # first RSI calculation
-            rsi = 100 - (100 / (1 + (avg_gain / avg_loss)))
+            rsi_res = 100 - (100 / (1 + (avg_gain / avg_loss)))
         else:
             # smoothed RSI
             # current gain and loss should be used, not avg_gain & avg_loss
-            rsi = 100 - (100 / (1 + ((prev_avg_gain * (period - 1) + curr_gains.iloc[-1]) /
-                                     (prev_avg_loss * (period - 1) + curr_losses.iloc[-1]))))
+            rsi_res = 100 - (100 / (1 + ((prev_avg_gain * (period - 1) + curr_gains.iloc[-1]) /
+                                         (prev_avg_loss * (period - 1) + curr_losses.iloc[-1]))))
 
         # df['rsi_'+str(period)+'_own'][period + rolling_count] = rsi
         rolling_count = rolling_count + 1
         prev_avg_gain = avg_gain
         prev_avg_loss = avg_loss
-        return rsi
+        return rsi_res
 
     diff = df[col_name].diff()[1:]  # skip na
     cols = {}
@@ -165,15 +178,15 @@ def rsi_smooth(df, intervals, col_name="close"):
     # df.drop(['diff'], axis = 1, inplace=True)
 
 
-def williamr(df, interval):
-    return momentum.williams_r(df['high'], 
-                               df['low'], 
-                               df['close'], 
-                               interval, 
+def williamr(df: pd.DataFrame, interval: int) -> pd.Series:
+    return momentum.williams_r(df['high'],
+                               df['low'],
+                               df['close'],
+                               interval,
                                fillna=True)
 
 
-def mfi(df, interval):
+def mfi(df: pd.DataFrame, interval: int) -> pd.Series:
     """
     momentum type indicator
     """
@@ -185,87 +198,127 @@ def mfi(df, interval):
                                    fillna=True)
 
 
-def sma(df_ss, interval, col_name="close"):
+def sma(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
+    """
+    Momentum indicator
+    """
+    # return df_ss[col_name + '_' + str(interval) + '_sma']
+    return trend.sma_indicator(df[col_name], interval, fillna=True)
+
+
+def sma_old(df_ss: sdf, interval: int, col_name: str = "close") -> pd.Series:
     """
     Momentum indicator
     """
     return df_ss[col_name + '_' + str(interval) + '_sma']
-    # if sma_column_name in df.columns:
-    #     print("****DELETE SMA COL 190", sma_column_name in df_cols_orig, sma_column_name)
-    #     del df[sma_column_name]
 
 
-def ema(df_ss, interval, col_name="close"):
+def ema(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
     """
     Needs validation
     Momentum indicator
     """
-    return df_ss[col_name + '_' + str(interval) + '_ema']
-    # if ema_column_name in df.columns:
-    #     print("delete ema", ema_column_name, " in orig?", ema_column_name in orig_df_columns)
-    #     del df[ema_column_name]
+    # return df_ss[col_name + '_' + str(interval) + '_ema']
+    return trend.ema_indicator(df[col_name], interval, fillna=True)
 
 
-def wavg(rolling_prices, period):
-    weights = pd.Series(range(1, period + 1))
-    return np.multiply(rolling_prices.values, weights.values).sum() / weights.sum()
+# def wavg(rolling_prices, period):
+#     weights = pd.Series(range(1, period + 1))
+#     return np.multiply(rolling_prices.values, weights.values).sum() / weights.sum()
+#
+#
+# def wma_res(df, i, col_name="close"):
+#     return df[col_name].rolling(i).apply(wavg, args=(i,), raw=False)
 
 
-def wma(df, intervals, col_name="close", hma_step=0):
-
-    """
-    Momentum indicator
-    """
-    temp_col_count_dict = {}
-    for i in intervals:
-        res = df[col_name].rolling(i).apply(wavg, args=(i,), raw=False)
-        if hma_step == 0:
-            df['wma_' + str(i)] = res
-        elif hma_step == 1:
-            if 'hma_wma_' + str(i) in temp_col_count_dict.keys():
-                temp_col_count_dict['hma_wma_' + str(i)] = temp_col_count_dict['hma_wma_' + str(i)] + 1
-            else:
-                temp_col_count_dict['hma_wma_' + str(i)] = 0
-            # after halving the periods and rounding, there may be two intervals with same value e.g.
-            # 2.6 & 2.8 both would lead to same value (3) after rounding. So save as diff columns
-            df['hma_wma_' + str(i) + '_' + str(temp_col_count_dict['hma_wma_' + str(i)])] = 2 * res
-        elif hma_step == 3:
-            expr = r"^hma_[0-9]{1}"
-            columns = list(df.columns)
-            df['hma_' + str(len(list(filter(re.compile(expr).search, columns))))] = res
+def wma(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
+    return wma_col(df[col_name], interval)
 
 
-def hma(df, intervals, col_name="close"):
-    expr = r"^wma_.*"
-
-    if not len(list(filter(re.compile(expr).search, list(df.columns)))) > 0:
-        wma(df, intervals, col_name)
-
-    intervals_half = np.round([i / 2 for i in intervals]).astype(int)
-
-    # step 1 = WMA for interval/2
-    # this creates cols with prefix 'hma_wma_*'
-    wma(df, intervals_half, col_name, 1)
-
-    # step 2 = step 1 - WMA
-    columns = list(df.columns)
-    expr = r"^hma_wma.*"
-    hma_wma_cols = list(filter(re.compile(expr).search, columns))
-    rest_cols = [x for x in columns if x not in hma_wma_cols]
-    expr = r"^wma.*"
-    wma_cols = list(filter(re.compile(expr).search, rest_cols))
-
-    df[hma_wma_cols] = df[hma_wma_cols].sub(df[wma_cols].values,
-                                            fill_value=0)
-
-    # step 3 = WMA(step 2, interval = sqrt(n))
-    intervals_sqrt = np.round([np.sqrt(i) for i in intervals]).astype(int)
-    for i, col in enumerate(hma_wma_cols):
-        wma(df, [intervals_sqrt[i]], col, 3)
-    df.drop(columns=hma_wma_cols, inplace=True)
+def wma_ta(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
+    return trend.wma_indicator(df[col_name], interval, fillna=True)
 
 
-def trix(df, interval, col_name="close"):
+def wma_col(s: pd.Series, interval: int) -> pd.Series:
+    return s.rolling(interval).apply(lambda x: ((np.arange(interval) + 1) * x).sum() / (np.arange(interval) + 1).sum(),
+                                     raw=True)
+
+
+def hma(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
+    s = df[col_name]
+    return wma_col(wma_col(s, interval // 2).multiply(2).sub(wma_col(s, interval)), int(np.sqrt(interval)))
+
+
+# def hma_wma(df, intervals, col_name="close"):
+#     return_cols = {}
+#     temp_col_count_dict = {}
+#     for i in intervals:
+#         wma_col = wma_res(df, i, col_name)
+#         if 'hma_wma_' + str(i) in temp_col_count_dict.keys():
+#             temp_col_count_dict['hma_wma_' + str(i)] = temp_col_count_dict['hma_wma_' + str(i)] + 1
+#         else:
+#             temp_col_count_dict['hma_wma_' + str(i)] = 0
+#         # after halving the periods and rounding, there may be two intervals with same value e.g.
+#         # 2.6 & 2.8 both would lead to same value (3) after rounding. So save as diff columns
+#         return_cols['hma_wma_' + str(i) + '_' + str(temp_col_count_dict['hma_wma_' + str(i)])] = 2 * wma_col
+#
+#     return return_cols
+#
+#
+# def wma(df, intervals, col_name="close", hma_step=0):
+#     """
+#     Momentum indicator
+#     """
+#     temp_col_count_dict = {}
+#     for i in intervals:
+#         res = df[col_name].rolling(i).apply(wavg, args=(i,), raw=False)
+#         if hma_step == 0:
+#             df['wma_' + str(i)] = res
+#         elif hma_step == 1:
+#             if 'hma_wma_' + str(i) in temp_col_count_dict.keys():
+#                 temp_col_count_dict['hma_wma_' + str(i)] = temp_col_count_dict['hma_wma_' + str(i)] + 1
+#             else:
+#                 temp_col_count_dict['hma_wma_' + str(i)] = 0
+#             # after halving the periods and rounding, there may be two intervals with same value e.g.
+#             # 2.6 & 2.8 both would lead to same value (3) after rounding. So save as diff columns
+#             df['hma_wma_' + str(i) + '_' + str(temp_col_count_dict['hma_wma_' + str(i)])] = 2 * res
+#         elif hma_step == 3:
+#             expr = r"^hma_[0-9]{1}"
+#             columns = list(df.columns)
+#             df['hma_' + str(len(list(filter(re.compile(expr).search, columns))))] = res
+#
+#
+# def hma(df, intervals, col_name="close"):
+#     expr = r"^wma_.*"
+#
+#     if not len(list(filter(re.compile(expr).search, list(df.columns)))) > 0:
+#         wma(df, intervals, col_name)
+#
+#     intervals_half = np.round([i / 2 for i in intervals]).astype(int)
+#
+#     # step 1 = WMA for interval/2
+#     # this creates cols with prefix 'hma_wma_*'
+#     wma(df, intervals_half, col_name, 1)
+#
+#     # step 2 = step 1 - WMA
+#     columns = list(df.columns)
+#     expr = r"^hma_wma.*"
+#     hma_wma_cols = list(filter(re.compile(expr).search, columns))
+#     rest_cols = [x for x in columns if x not in hma_wma_cols]
+#     expr = r"^wma.*"
+#     wma_cols = list(filter(re.compile(expr).search, rest_cols))
+#
+#     df[hma_wma_cols] = df[hma_wma_cols].sub(df[wma_cols].values,
+#                                             fill_value=0)
+#
+#     # step 3 = WMA(step 2, interval = sqrt(n))
+#     intervals_sqrt = np.round([np.sqrt(i) for i in intervals]).astype(int)
+#     for i, col in enumerate(hma_wma_cols):
+#         wma(df, [intervals_sqrt[i]], col, 3)
+#     df.drop(columns=hma_wma_cols, inplace=True)
+
+
+def trix(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
     """
     TA lib actually calculates percent rate of change of a triple exponentially
     smoothed moving average not Triple EMA.
@@ -275,7 +328,7 @@ def trix(df, interval, col_name="close"):
     return trend.trix(df[col_name], interval, fillna=True)
 
 
-def dmi(df_ss, interval):
+def dmi(df_ss: sdf, interval: int) -> pd.Series:
     """
     trend indicator
     TA gave same/wrong result
@@ -295,18 +348,18 @@ def dmi(df_ss, interval):
     #     print("***dmi delete", column, column in df.columns)
 
 
-def cci(df, interval):
+def cci(df: pd.DataFrame, interval: int) -> pd.Series:
     return trend.cci(df['high'], df['low'], df['close'], interval, fillna=True)
 
 
-def bb_mav(df_ss, interval, col_name="close"):
+def bb_mav(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
     """
     volitility indicator
     """
-    return volatility.bollinger_mavg(df_ss[col_name], window=interval, fillna=True)
+    return volatility.bollinger_mavg(df[col_name], window=interval, fillna=True)
 
 
-def cmo(df, intervals, col_name="close"):
+def cmo(df: pd.DataFrame, intervals: typing.Iterable[int], col_name: str = "close") -> typing.Dict[str, pd.Series]:
     """
     Chande Momentum Oscillator
     As per https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/cmo
@@ -348,7 +401,7 @@ def macd(df):
 
 
 # not implemented. period 12,26: +1, ready to use
-def ppo(df, col_name="close"):
+def ppo(df: pd.DataFrame, col_name: str = "close") -> None:
     """
     As per https://www.investopedia.com/terms/p/ppo.asp
     uses EMA(12) and EMA(26) to calculate PPO value
@@ -373,7 +426,7 @@ def calculate_roc(series):
     return ((series.iloc[-1] - series.iloc[0]) / series.iloc[0]) * 100
 
 
-def roc(df, interval, col_name="close"):
+def roc(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
     """
     Momentum oscillator
     As per implement https://www.investopedia.com/terms/p/pricerateofchange.asp
@@ -384,24 +437,25 @@ def roc(df, interval, col_name="close"):
             intervals -> list of periods for which to calculated
     return: None (adds the result in a column)
     """
-    return df[col_name].rolling(interval + 1).apply(calculate_roc, raw=False)
+    # return df[col_name].rolling(interval + 1).apply(calculate_roc, raw=False)
+    return momentum.roc(df[col_name], interval, fillna=True)
 
 
-def dpo(df, interval, col_name="close"):
+def dpo(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
     """
     Trend Oscillator type indicator
     """
-    return trend.dpo(df[col_name], window=interval)
+    return trend.dpo(df[col_name], window=interval, fillna=True)
 
 
-def kst(df, interval, col_name="close"):
+def kst(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
     """
     Trend Oscillator type indicator
     """
-    return trend.kst(df[col_name], interval)
+    return trend.kst(df[col_name], interval, fillna=True)
 
 
-def cmf(df, interval):
+def cmf(df: pd.DataFrame, interval: int) -> pd.Series:
     """
     An oscillator type indicator & volume type
     No other implementation found
@@ -414,11 +468,11 @@ def cmf(df, interval):
                                      fillna=True)
 
 
-def force_index(df, interval):
+def force_index(df: pd.DataFrame, interval: int) -> pd.Series:
     return volume.force_index(df['close'], df['volume'], interval, fillna=True)
 
 
-def eom(df, interval):
+def eom(df: pd.DataFrame, interval: int) -> pd.Series:
     """
     An Oscillator type indicator and volume type
     Ease of Movement : https://www.investopedia.com/terms/e/easeofmovement.asp
@@ -433,11 +487,11 @@ def eom(df, interval):
 
 
 # not used. +2 for each interval kdjk and rsv
-def kdjk_rsv(df_ss, interval):
+def kdjk_rsv(df_ss: sdf, interval: int) -> pd.Series:
     return df_ss['kdjk_' + str(interval)]
 
 
-def buy_hold_sell(df, col_name, window_size=11):
+def buy_hold_sell(df: pd.DataFrame, col_name: str, window_size: int = 11) -> np.ndarray:
     """
     Data is labeled as per the logic in research paper
     Label code : BUY => 1, SELL => 0, HOLD => 2
@@ -486,59 +540,61 @@ def buy_hold_sell(df, col_name, window_size=11):
     return labels
 
 
-def short_long_ma_crossover(df, short, long, col_name="close"):
-    """
-    if short = 30 and long = 90,
-    Buy when 30 day MA < 90 day MA
-    Sell when 30 day MA > 90 day MA
+# todo: reimplement
+# def short_long_ma_crossover(df: pd.DataFrame, short: int, long: int, col_name: str = "close") -> pd.DataFrame:
+#     """
+#     if short = 30 and long = 90,
+#     Buy when 30 day MA < 90 day MA
+#     Sell when 30 day MA > 90 day MA
+#
+#     Label code : BUY => 1, SELL => 0, HOLD => 2
+#
+#     params :
+#         df => Dataframe with data
+#         col_name => name of column which should be used to determine strategy
+#
+#     returns : numpy array with integer codes for labels
+#     """
+#
+#     print(f"creating label with {short}_{long}_ma")
+#
+#     def detect_crossover(diff_prev, diff):
+#         if diff_prev >= 0 > diff:
+#             # buy
+#             return BUY
+#         elif diff_prev <= 0 < diff:
+#             return SELL
+#         else:
+#             return HOLD
+#
+#     sma(df, [short, long], col_name)
+#     labels = np.zeros((len(df)))
+#     labels[:] = np.nan
+#     diff = df[col_name + '_sma_' + str(short)] - df[col_name + '_sma_' + str(long)]
+#     diff_prev = diff.shift()
+#     df['diff_prev'] = diff_prev
+#     df['diff'] = diff
+#
+#     res = df.apply(lambda row: detect_crossover(row['diff_prev'], row['diff']), axis=1)
+#     df.drop(columns=['diff_prev', 'diff'], inplace=True)
+#     return res
 
-    Label code : BUY => 1, SELL => 0, HOLD => 2
 
-    params :
-        df => Dataframe with data
-        col_name => name of column which should be used to determine strategy
-
-    returns : numpy array with integer codes for labels
-    """
-
-    print(f"creating label with {short}_{long}_ma")
-
-    def detect_crossover(diff_prev, diff):
-        if diff_prev >= 0 > diff:
-            # buy
-            return BUY
-        elif diff_prev <= 0 < diff:
-            return SELL
-        else:
-            return HOLD
-
-    sma(df, [short, long], col_name)
-    labels = np.zeros((len(df)))
-    labels[:] = np.nan
-    diff = df[col_name + '_sma_' + str(short)] - df[col_name + '_sma_' + str(long)]
-    diff_prev = diff.shift()
-    df['diff_prev'] = diff_prev
-    df['diff'] = diff
-
-    res = df.apply(lambda row: detect_crossover(row['diff_prev'], row['diff']), axis=1)
-    df.drop(columns=['diff_prev', 'diff'], inplace=True)
-    return res
-
-
-def year_range(df, start_date=None, years=5, col_name="timestamp"):
+def year_range(df: pd.DataFrame, start_date=None, years: int = 5, col_name: str = "timestamp") -> pd.DataFrame:
     if not start_date:
         start_date = df.head(1).iloc[0][col_name]
 
+    # noinspection PyArgumentList
     end_date = start_date + pd.offsets.DateOffset(years=years)
     df_batch = df[(df[col_name] >= start_date) & (df[col_name] <= end_date)]
     return df_batch
 
 
-def calc_ibr(df):
+def calc_ibr(df: pd.DataFrame) -> pd.Series:
     return (df['close'] - df['low']) / (df['high'] - df['low'])
 
 
-def mean_reversion(df, col_name="close"):
+def mean_reversion(df: pd.DataFrame, col_name: str = "close") -> np.ndarray:
     """
     strategy as described at "https://decodingmarkets.com/mean-reversion-trading-strategy"
 
@@ -575,7 +631,7 @@ def mean_reversion(df, col_name="close"):
     return labels
 
 
-def delta(df, interval=1, col_name="close"):
+def delta(df: pd.DataFrame, interval: int = 1, col_name: str = "close") -> pd.Series:
     """
     labels data based on price rise on next day
       next_day - prev_day
@@ -585,7 +641,7 @@ def delta(df, interval=1, col_name="close"):
     return df[col_name].diff(periods=interval)
 
 
-def delta_percent(df, interval=1, col_name="close"):
+def delta_percent(df: pd.DataFrame, interval: int = 1, col_name: str = "close") -> pd.DataFrame:
     """
     labels data based on price rise on next day
       next_day - prev_day
@@ -594,7 +650,10 @@ def delta_percent(df, interval=1, col_name="close"):
     return df[col_name].pct_change(periods=interval)
 
 
-def get_buy_sell(df, threshold=0, buy_positive=True, non_threshold="HOLD"):
+def get_buy_sell(df: pd.DataFrame,
+                 threshold: float = 0,
+                 buy_positive: bool = True,
+                 non_threshold: str = "HOLD") -> pd.Series:
     def get_result(x):
         if x > threshold:
             return "BUY" if buy_positive else "SELL"
@@ -606,53 +665,74 @@ def get_buy_sell(df, threshold=0, buy_positive=True, non_threshold="HOLD"):
     return df.apply(get_result)
 
 
-def get_up_down(df, no_change=0):
+def get_up_down(df: pd.DataFrame, up=1, no_change=0, down=0) -> pd.DataFrame:
     def get_result(x):
         if x > 0:
-            return 1
+            return up
         elif x == 0:
             return no_change
         else:
-            return 0
+            return down
 
     return df.apply(get_result)
 
 
-def as_buy_sell(df, col_name="label", buy_positive=True):
+def as_buy_sell(df: pd.DataFrame, col_name="label", buy_positive=True):
     df[col_name] = get_buy_sell(df[col_name], buy_positive=buy_positive)
 
 
-def log_change(df, interval, col_name="close"):
+def log_change(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
     return np.log(df[col_name] / df[col_name].shift(interval))
 
 
-def technical_indicators(df, intervals, col_name='close'):
+def ta_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    return ta.add_all_ta_features(df,
+                                  open="open",
+                                  high="high",
+                                  low="low",
+                                  close="close",
+                                  volume="volume",
+                                  fillna=True)
+
+
+def technical_indicators(df: pd.DataFrame, intervals: typing.Iterable[int], col_name: str = 'close') -> pd.DataFrame:
     df_ss = sdf.retype(df)
 
+    # res = rsi_smooth(df_ss, [intervals[0]], col_name=col_name)['rsi_' + str(intervals[0])]
+    # for interval in intervals:
+    #     start_time = time.time()
+    #     res = sma_old(df_ss, interval, col_name=col_name)
+    #     print("ss", time.time() - start_time)
+    #
+    #     start_time = time.time()
+    #     ta_res = sma(df, interval, col_name=col_name)
+    #     print("ta", time.time() - start_time)
+    #
+    #     print(interval, " eq", res.equals(ta_res), res.sum(), ta_res.sum(), res.mean(), ta_res.mean())
+    # exit()
+
     cols = {}
-    # get_RSI(df, col_name, intervals)  # faster but non-smoothed RSI
-    cols.update(rsi_smooth(df, intervals, col_name))  # momentum
+    cols.update(rsi_smooth(df, intervals, col_name))  # momentum --> slow
     cols.update(calc_intervals(df, intervals, "wr", williamr))  # momentum
     cols.update(calc_intervals(df, intervals, "mfi", mfi))  # momentum
     cols.update(calc_intervals(df, intervals, "roc", roc, col_name=col_name))  # momentum
     cols.update(calc_intervals(df, intervals, "cmf", cmf))  # momentum, volume ema
-    cols.update(cmo(df, intervals, col_name))  # momentum
-    cols.update(calc_intervals(df_ss, intervals, f"{col_name}_sma", sma, col_name=col_name))
-    cols.update(calc_intervals(df_ss, intervals, "open_sma", sma, col_name="open"))
-    cols.update(calc_intervals(df_ss, intervals, "ema", ema, col_name=col_name))
-    df = df.assign(**cols)
-    cols = {}
-    wma(df, intervals, col_name)
-    hma(df, intervals, col_name)
-    cols.update(calc_intervals(df_ss, intervals, "trix", trix, col_name=col_name))  # trend
+    cols.update(cmo(df, intervals, col_name))  # momentum --> not optimized
+    cols.update(calc_intervals(df, intervals, f"{col_name}_sma", sma, col_name=col_name))
+    cols.update(calc_intervals(df, intervals, "open_sma", sma, col_name="open"))
+    cols.update(calc_intervals(df, intervals, "ema", ema, col_name=col_name))
+    cols.update(calc_intervals(df, intervals, "wma", wma, col_name=col_name))
+    cols.update(calc_intervals(df, intervals, "hma", hma, col_name=col_name))
+    cols.update(calc_intervals(df, intervals, "trix", trix, col_name=col_name))  # trend
     cols.update(calc_intervals(df, intervals, "cci", cci))  # trend
     cols.update(calc_intervals(df, intervals, "dpo", dpo, col_name=col_name))  # trend oscillator
     cols.update(calc_intervals(df, intervals, "kst", kst, col_name=col_name))  # trend
-    cols.update(calc_intervals(df_ss, intervals, "dmi", dmi))  # trend
-    cols.update(calc_intervals(df_ss, intervals, "bb", bb_mav, col_name=col_name))  # volatility
+    cols.update(calc_intervals(df_ss, intervals, "dmi", dmi))  # trend, --> TA gave same/wrong result ??
+    cols.update(calc_intervals(df, intervals, "bb", bb_mav, col_name=col_name))  # volatility
     # get_psi(df, col_name, intervals)  # can't find formula
     cols.update(calc_intervals(df, intervals, "fi", force_index))  # volume
-    cols.update(calc_intervals(df_ss, intervals, "kdjk", kdjk_rsv))  # ready to use, +2*len(intervals), 2 rows ---? ????
+    cols.update(calc_intervals(df_ss, intervals, "kdjk",
+                               kdjk_rsv))  # ready to use, +2*len(intervals), 2 rows ---? ???? --> not optimizzed
     cols.update(calc_intervals(df, intervals, "eom", eom))  # volume momentum
     # get_volume_delta(df)  # volume +1
     # calc_ibr(df)  # ready to use +1  --> no assignment, bring back with assignment
@@ -661,7 +741,7 @@ def technical_indicators(df, intervals, col_name='close'):
     return df
 
 
-def graph(df, name):
+def graph(df: pd.DataFrame, name: str) -> None:
     layout = go.Figure(
         data=[{
             'x': df.index,

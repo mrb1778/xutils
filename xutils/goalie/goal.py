@@ -2,15 +2,14 @@ import argparse
 import functools
 import time
 from types import FunctionType
-from typing import Union, Any, Dict, List, Optional, Callable, Literal
+from typing import Union, Any, Dict, List, Callable, Literal
 
 import xutils.core.python_utils as pu
 import xutils.data.json_utils as ju
 
 
 class GoalIdentifier:
-
-    def __init__(self, name, scope) -> None:
+    def __init__(self, name: str, scope: str) -> None:
         super().__init__()
         self.name = name
         self.scope = scope
@@ -18,15 +17,6 @@ class GoalIdentifier:
     def __str__(self) -> str:
         return F'{self.scope}:{self.name}' \
             if self.scope is not None else self.name
-
-
-def _get_goal_ids(goals, scope):
-    if goals is None:
-        return []
-    else:
-        if not isinstance(goals, (list, tuple)):
-            goals = [goals]
-        return [_get_goal_id(g, scope) for g in goals]
 
 
 def _get_goal_id(goal_id, scope):
@@ -38,6 +28,15 @@ def _get_goal_id(goal_id, scope):
         return goal_id.__goal_identifier__
     elif isinstance(goal_id, str):
         return GoalIdentifier(goal_id, scope)
+
+
+def _get_goal_ids(goals, scope):
+    if goals is None:
+        return []
+    else:
+        if not isinstance(goals, (list, tuple)):
+            goals = [goals]
+        return [_get_goal_id(g, scope) for g in goals]
 
 
 class GoalDefinition:
@@ -83,6 +82,10 @@ class GoalDefinition:
                                                              data_type=param["type"])
 
         self.fun = fun
+
+        input_params = self.params_of_type(InputParam)
+        for input_param in input_params.values():
+            input_param.source = self.name
 
     def execute(self, possible_kwargs):
         reg_fun = self.fun
@@ -158,8 +161,16 @@ class ParamType:
 
 
 class InputParam(ParamType):
-    def __init__(self, name: str, default=None, label=None, description=None, data_type=None, required=False) -> None:
+    def __init__(self,
+                 name: str,
+                 default=None,
+                 label=None,
+                 description=None,
+                 data_type=None,
+                 required=False,
+                 source=None) -> None:
         super().__init__(name)
+        self.source = source
         self.default = default
         self.label = label
         self.description = description
@@ -180,6 +191,12 @@ class InputParam(ParamType):
             json["label"] = self.label
         if self.description is not None:
             json["description"] = self.label
+        if self.data_type is not None:
+            json["dataType"] = self.data_type
+        if self.required is not None:
+            json["required"] = self.required
+        if self.source is not None:
+            json["source"] = self.source
         return json
 
 
@@ -259,18 +276,16 @@ class GoalRegistry:
         self._goals: Dict[str, Dict[str, GoalDefinition]] = {}
         # self.current_scope = GoalScope(self, scope=self.SCOPE_DEFAULT)
 
-        self.trace: False
-
     def goals(self, scope=None, create=False):
         if scope is None:
             # scope = self.current_scope.scope
             scope = self.SCOPE_DEFAULT
 
         if scope not in self._goals:
+            scoped_goals = {}
             if create:
-                scoped_goals = {}
                 self._goals[scope] = scoped_goals
-                return scoped_goals
+            return scoped_goals
         else:
             return self._goals[scope]
 
@@ -326,8 +341,12 @@ class GoalRegistry:
 
         scoped_goals[goal_def.name] = goal_def
 
-    def __call__(self, name: str, pre=None, post=None, params=None, refs=None, scope=None):
-        def decorator_goal(fun):
+    def __call__(self, function: Callable = None, name: str = None, pre=None, post=None, params=None, refs=None, scope=None):
+        def decorator_goal(fun: Callable):
+            nonlocal name
+            if name is None:
+                name = fun.__name__
+
             goal_identifier = GoalIdentifier(name, scope)
             fun.__goal_identifier__ = goal_identifier
             self.add(name,
@@ -345,6 +364,8 @@ class GoalRegistry:
             wrapper.__goal_identifier__ = goal_identifier
             return wrapper
 
+        if function:
+            return decorator_goal(function)
         return decorator_goal
 
     def definition(self, name, scope=None, fail_if_missing=True) -> GoalDefinition:
@@ -496,33 +517,49 @@ class GoalRegistry:
 
             return result
 
-    def run_batch(self, json=None, json_path=None, scope=None, **kwargs):
-        if json is not None:
-            json = ju.read(json)
-        elif json_path is not None:
-            json = ju.read_file(json_path)
+    def run_batch(self, batch=None, path=None, scope=None, run_kwargs=None):
+        if run_kwargs is None:
+            batch_kwargs = {}
 
-        if json is None:
+        if path is not None:
+            batch = ju.read_file(path)
+        elif isinstance(batch, str):
+            batch = ju.read(batch)
+
+        if batch is None:
             raise ValueError("json or json file required")
 
-        if "args" in json:
-            kwargs.update(json["args"])
+        if "params" in batch:
+            run_kwargs.update(batch["params"])
 
         batch_results = []
-        for goal_entry in json["goals"]:
+        goals = batch["goals"]
+        if isinstance(goals, dict):
+            goals = [goals]
+        for goal_entry in goals:
             batch_result = self._run_batch_goal(goal_entry=goal_entry,
-                                                goal_args=kwargs,
+                                                goal_args=run_kwargs,
                                                 scope=scope)
+            run_kwargs["__previous_result__"] = batch_result
             batch_results.append(batch_result)
         return batch_results
 
-    def _run_batch_goal(self, goal_entry, goal_args, scope):
-        if "args" in goal_entry:
-            goal_args.update(goal_entry["args"])
+    def _run_batch_goal(self, goal_entry: dict, goal_args: dict, scope: str):
+        if "params" in goal_entry:
+            goal_args.update(goal_entry["params"])
+        if "argParams" in goal_entry:
+            print("argParams:goal_args", goal_args.keys())
+            for arg_param_key, arg_param_value in goal_entry["argParams"].items():
+                goal_args[arg_param_key] = goal_args[arg_param_value]
 
         if "loop" in goal_entry:
             loop_entry = goal_entry["loop"]
-            goals = loop_entry["goals"]
+            if "goals" in loop_entry:
+                goals = loop_entry["goals"]
+            elif "goal" in loop_entry:
+                goals = [loop_entry["goal"]]
+            else:
+                raise ValueError("Loop: missing goal(s)", goal_entry)
             arg_name = loop_entry["arg"] if "arg" in loop_entry else "__loop_arg__"
 
             if "range" in loop_entry:
@@ -534,13 +571,17 @@ class GoalRegistry:
             elif "valuesArg" in loop_entry:
                 loop_over = goal_args[loop_entry["valuesArg"]]
             else:
-                raise ValueError("Invalid Loop Over", goal_entry)
+                raise ValueError("Loop: missing loop over", goal_entry)
 
             loop_result = self._run_batch_goal_loop(loop_over=loop_over,
                                                     goals=goals,
                                                     goal_args=goal_args,
                                                     loop_arg_name=arg_name,
                                                     scope=scope)
+            goal_args["__previous_result__"] = loop_result
+
+            if "resultArg" in loop_entry:
+                goal_args[loop_entry["resultArg"]] = loop_result
 
             if "resultGoal" in loop_entry:
                 if "resultGoalParam" not in loop_entry:
@@ -556,7 +597,7 @@ class GoalRegistry:
         else:
             raise ValueError("Invalid batch Goal", goal_entry)
 
-    def _run_batch_goal_loop(self, loop_over, goals, goal_args, loop_arg_name, scope):
+    def _run_batch_goal_loop(self, loop_over, goals: list, goal_args: dict, loop_arg_name: str, scope:str):
         if loop_over is None:
             return
         if not pu.iterable(loop_over):
@@ -575,8 +616,11 @@ class GoalRegistry:
 
     def to_json(self, scope=None):
         return {
-            "goals": [g.to_json() for g in self.goal_definitions(scope=scope)]
+            "goals": [g for g in self.goal_definitions(scope=scope)]
         }
+
+    def export_goals(self, file_name: str):
+        ju.write_to(self, path=file_name)
 
     def create_arg_parser(self,
                           default_goal=None,
@@ -667,7 +711,7 @@ class GoalRegistry:
         if "goal_json" in args:
             goal_json = args["goal_json"]
             del args['goal_json']
-            result = goal.run_batch(json_path=goal_json, scope=scope, **{**kwargs, **args})
+            result = goal.run_batch(path=goal_json, scope=scope, run_kwargs={**kwargs, **args})
         elif "goal" in args:
             goal_name = args["goal"]
             goal_names = goal_name.split(" ")
@@ -682,7 +726,7 @@ class GoalRegistry:
 
         return result
 
-    def debug(self, on=True):
+    def debug(self, on: bool = True) -> None:
         self.trace = on
 
 # todo: bring back for default scope

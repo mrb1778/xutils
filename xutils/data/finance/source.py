@@ -12,7 +12,10 @@ def download_alphavantage(path, ticker, api_key, update=False):
         update=update)
 
 
-def download_yahoo(ticker: str, save_path=None, update=False):
+def download_yahoo(ticker: str,
+                   save_path=None,
+                   update_if_older_than=7,
+                   force_update=False):
     def _download():
         import yfinance as yf
         y_ticker = yf.Ticker(ticker.replace(".", "-"))
@@ -25,7 +28,6 @@ def download_yahoo(ticker: str, save_path=None, update=False):
         },
             inplace=True)
         pu.lower_case_columns(df)
-        print(pu.describe_data(df))
         return df
 
     if save_path is None:
@@ -37,4 +39,5 @@ def download_yahoo(ticker: str, save_path=None, update=False):
             return path
         return fu.create_file_if(save_path,
                                  _save_and_download,
-                                 update=update)
+                                 update_if_older_than=update_if_older_than,
+                                 update=force_update)

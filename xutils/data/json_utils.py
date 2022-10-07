@@ -1,3 +1,4 @@
+import functools
 import inspect
 import json
 import typing
@@ -41,15 +42,18 @@ class JsonExpander:
     def can_handle(self, obj):
         pass
 
-    def expand(self, obj, default_expander):
+    def expand(self, obj):
         pass
 
 
 json_handlers: typing.List[JsonExpander] = []
 
 
+# @functools.wraps
 def json_handler(handler):
-    json_handlers.append(handler())
+    handler_instance = handler()
+    json_handlers.append(handler_instance)
+    return handler_instance
 
 
 @json_handler
@@ -57,9 +61,9 @@ class DictObjJsonExpander(JsonExpander):
     def can_handle(self, obj):
         return hasattr(obj, "__dict__")
 
-    def expand(self, obj, default_expander):
+    def expand(self, obj):
         return {
-            key: default_expander(value)
+            key: expand_json(value)
             # key: value
             for key, value in inspect.getmembers(obj)
             if not key.startswith("__")
@@ -75,12 +79,21 @@ class DictObjJsonExpander(JsonExpander):
 
 
 @json_handler
+class ToStringHiddenExpander(JsonExpander):
+    def can_handle(self, obj):
+        return hasattr(obj, "__toString")
+
+    def expand(self, obj):
+        return expand_json(obj.__toString())
+
+
+@json_handler
 class ToJsonExpander(JsonExpander):
     def can_handle(self, obj):
         return hasattr(obj, "to_json")
 
-    def expand(self, obj, default_expander):
-        return default_expander(obj.to_json())
+    def expand(self, obj):
+        return expand_json(obj.to_json())
 
 
 @json_handler
@@ -88,8 +101,10 @@ class DictJsonExpander(JsonExpander):
     def can_handle(self, obj):
         return isinstance(obj, dict)
 
-    def expand(self, obj, default_expander):
-        return {str(key): default_expander(value) for key, value in obj.items()}
+    def expand(self, obj):
+        return {str(key):
+                expand_json(value)
+                for key, value in obj.items()}
 
 
 @json_handler
@@ -97,17 +112,35 @@ class ListSetJsonExpander(JsonExpander):
     def can_handle(self, obj):
         return isinstance(obj, (list, set, tuple))
 
-    def expand(self, obj, default_expander):
-        return list(map(default_expander, obj))
+    def expand(self, obj):
+        return list(map(expand_json, obj))
 
 
 @json_handler
-class NumpyJsonExpander(JsonExpander):
+class NumpyIntJsonExpander(JsonExpander):
     def can_handle(self, obj):
-        return isinstance(obj, (np.ndarray, np.int64, np.float32, np.float64))
+        return isinstance(obj, np.integer)
 
-    def expand(self, obj, default_expander):
-        return obj.tolist()
+    def expand(self, obj):
+        return int(obj)
+
+
+@json_handler
+class NumpyFloatJsonExpander(JsonExpander):
+    def can_handle(self, obj):
+        return isinstance(obj, np.floating)
+
+    def expand(self, obj):
+        return float(obj)
+
+
+@json_handler
+class NumpyArrayJsonExpander(JsonExpander):
+    def can_handle(self, obj):
+        return isinstance(obj, np.ndarray)
+
+    def expand(self, obj):
+        return [expand_json(e) for e in obj.tolist()]
 
 
 @json_handler
@@ -115,13 +148,48 @@ class PandasJsonExpander(JsonExpander):
     def can_handle(self, obj):
         return isinstance(obj, (pd.DataFrame, pd.Series))
 
-    def expand(self, obj, default_expander):
+    def expand(self, obj):
         return obj.to_dict()
+
+
+@json_handler
+class IntPrimitiveClassJsonExpander(JsonExpander):
+    def can_handle(self, obj):
+        return isinstance(obj, type) and obj == int
+
+    def expand(self, obj):
+        return 'int'
+
+
+@json_handler
+class FloatPrimitiveClassJsonExpander(JsonExpander):
+    def can_handle(self, obj):
+        return isinstance(obj, type) and obj == float
+
+    def expand(self, obj):
+        return 'float'
+
+
+@json_handler
+class StringPrimitiveClassJsonExpander(JsonExpander):
+    def can_handle(self, obj):
+        return isinstance(obj, type) and obj == str
+
+    def expand(self, obj):
+        return 'string'
+
+
+@json_handler
+class BoolPrimitiveClassJsonExpander(JsonExpander):
+    def can_handle(self, obj):
+        return isinstance(obj, type) and obj == bool
+
+    def expand(self, obj):
+        return 'boolean'
 
 
 def expand_json(obj):
     for handler in reversed(json_handlers):
         if handler.can_handle(obj):
-            return handler.expand(obj, expand_json)
-
+            return handler.expand(obj)
     return obj
