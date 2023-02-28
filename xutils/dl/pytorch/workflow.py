@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Dict, Any, Optional, Callable
 
 from mrbuilder.builders import pytorch as mrb
 import xutils.dl.pytorch.lightning_utils as lu
@@ -7,36 +8,38 @@ import xutils.data.json_utils as ju
 import xutils.data.data_utils as du
 
 
-def get_model_builder(model_definition, input_shape, **model_kwargs):
+def get_model(model_definition: Dict,
+              input_shape,
+              **model_kwargs):
     mrb_net_builder = mrb.build(model_definition)
     model = mrb_net_builder(input_shape, **model_kwargs)
     return model
 
 
-def train_model(model_definition,
-                model_kwargs,
-                train_kwargs,
-                checkpoint_path,
-                data_manager,
-                epochs=300,
-                deterministic=False,
-                test_fn=None):
+def train_model(model_definition: Dict,
+                model_kwargs: Dict,
+                train_kwargs: Dict,
+                checkpoint_path: str,
+                data_manager: du.DataManager,
+                epochs: int = 300,
+                deterministic: bool = False,
+                test_fn: Optional[Callable[[Any], Dict[str, Any]]] = None):
     if model_kwargs is None:
         model_kwargs = {}
     model_kwargs["output_size"] = data_manager.shape_y
 
-    model_builder = get_model_builder(model_definition=model_definition,
-                                      input_shape=data_manager.shape_x,
-                                      **model_kwargs)
+    model_builder = get_model(model_definition=model_definition,
+                              input_shape=data_manager.shape_x,
+                              **model_kwargs)
 
-    best_model, best_model_path = lu.train_model(model=model_builder,
-                                                 data_manager=data_manager,
-                                                 train_kwargs=train_kwargs,
-                                                 epochs=epochs,
-                                                 checkpoint_path=checkpoint_path,
-                                                 deterministic=deterministic)
+    model, model_path = lu.train_model(model=model_builder,
+                                       data_manager=data_manager,
+                                       train_kwargs=train_kwargs,
+                                       epochs=epochs,
+                                       checkpoint_path=checkpoint_path,
+                                       deterministic=deterministic)
 
-    checkpoint_meta = CheckpointMeta(best_model_path)
+    checkpoint_meta = CheckpointMeta(model_path)
     checkpoint_meta.save_meta(model_definition=model_definition,
                               data_manager=data_manager,
                               input_shape=data_manager.shape_x,
@@ -46,7 +49,7 @@ def train_model(model_definition,
     if test_fn is not None:
         checkpoint_meta.evaluate(test_fn)
 
-    return best_model, best_model_path
+    return model, model_path
 
 
 META_SUFFIX = ".meta.json"
@@ -56,16 +59,16 @@ RESULTS_SUFFIX = ".results.json"
 class CheckpointMeta:
     def __init__(self, checkpoint) -> None:
         super().__init__()
-        self.checkpoint = checkpoint
-        self.metadata = None
-        self.performance = None
+        self.checkpoint: str = checkpoint
+        self.metadata: Optional[Dict[str, Any]] = None
+        self.performance: Optional[Dict[str, Any]] = None
 
     def save_meta(self,
-                  model_definition,
-                  data_manager,
+                  model_definition: Dict,
+                  data_manager: du.DataManager,
                   input_shape,
-                  model_kwargs,
-                  train_kwargs):
+                  model_kwargs: Dict,
+                  train_kwargs: Dict):
         return ju.write_to({
             "data_manager": data_manager,
             "model_definition": model_definition,
@@ -89,31 +92,36 @@ class CheckpointMeta:
             model_kwargs["output_size"] = self.metadata.get("output_size")
         train_kwargs = self.metadata.get("train_kwargs")
 
-        model_builder = get_model_builder(model_definition=model_definition,
-                                          input_shape=input_shape,
-                                          **model_kwargs)
+        model_builder = get_model(model_definition=model_definition,
+                                  input_shape=input_shape,
+                                  **model_kwargs)
 
         return lu.load_model(model_or_class=model_builder,
                              path=self.checkpoint,
                              model_kwargs=train_kwargs,
                              wrap=True)
 
-    def evaluate(self, test_fn=None, test_results=None):
-        self.performance = test_fn(self.checkpoint) if test_fn is not None else test_results
+    def evaluate(self, test_fn: Callable[[Any], Dict[str, Any]]):
+        print("evaluate", self.checkpoint)
+        self.performance = test_fn(checkpoint=self.checkpoint)
+        return self.save_results(test_results=self.performance)
+
+    def save_results(self, name_suffix: str = "", test_results: Dict[str, Any] = None):
         if test_results is not None:
             test_results["timestamp"] = str(datetime.now())
-        ju.write_to(self.performance,
-                    path=self.checkpoint + RESULTS_SUFFIX, pretty_print=True)
+        ju.write_to(test_results,
+                    path=self.checkpoint + name_suffix + RESULTS_SUFFIX, pretty_print=True)
 
-        return self.performance
+        return test_results
 
     def get_performance(self,
-                        criteria=None):
+                        criteria: str = None):
         if self.performance is None:
             self.performance = ju.read_file(self.checkpoint + RESULTS_SUFFIX)
         return self.performance if criteria is None else self.performance[criteria]
 
-    def create_datamanager(self, df):
+    def create_datamanager(self,
+                           df):
         data_manager = du.DataManager()
         data_manager.set_config(self.metadata["data_manager"],
                                 play=False)
@@ -122,7 +130,8 @@ class CheckpointMeta:
 
         return data_manager
 
-    def run(self, df, confidence=False):
+    def run(self, df,
+            confidence: bool = False):
         model = self.load_model()
         data_manager = self.create_datamanager(df)
         results = lu.run_model(model, data_manager)
@@ -131,4 +140,3 @@ class CheckpointMeta:
             return decoded_labels, data_manager.label_confidence(results)
         else:
             return decoded_labels
-

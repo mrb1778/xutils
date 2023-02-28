@@ -1,8 +1,7 @@
 import os
 import time
-from typing import Tuple
+from typing import Tuple, Any, Optional, Literal, Union, Callable
 
-from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
 from torchmetrics import Precision, Recall, Accuracy, MetricTracker
@@ -14,6 +13,7 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+from typing.io import IO
 
 from xutils.core.python_utils import getattr_ignore_case
 import xutils.data.data_utils as du
@@ -26,11 +26,17 @@ import numpy as np
 torch.autograd.set_detect_anomaly(True)
 
 
-class WrapperModule(LightningModule):
-    def __init__(self, wrapped, learning_rate, loss_fn=None, batch_size=10):  # , num_classes=None):
+class WrapperModule(pl.LightningModule):
+    def __init__(self,
+                 wrapped: pl.LightningModule,
+                 learning_rate: float,
+                 output_type: Literal["binary", "multiclass", "multilabel"] = "binary",
+                 loss_fn: Union[str, Callable] = F.cross_entropy,
+                 batch_size: int = 10):  # , num_classes=None):
         super(WrapperModule, self).__init__()
-        self.model = wrapped
-        self.model.to(self.device)
+        self.model: pl.LightningModule = wrapped
+        # self.model.to(self.device) # todo: see why not gpu
+        self.model.cuda()
 
         self.learning_rate = learning_rate
         self.save_hyperparameters('learning_rate', 'loss_fn', 'batch_size')
@@ -53,7 +59,8 @@ class WrapperModule(LightningModule):
         # if num_classes is not None:
         #     self.precision = Precision(num_classes)
         #     self.recall = Recall(num_classes)
-        self.accuracy = Accuracy()
+        train_type = output_type if output_type != 'onehot' else 'multiclass'
+        self.accuracy = Accuracy(task=train_type)
 
         self.train_loss_tracker = EMATracker(alpha=0.02)
 
@@ -191,11 +198,11 @@ class NumpyXYDataset(Dataset):
         # todo: determine type?
         return torch.from_numpy(self.x[idx]).float(), \
             torch.from_numpy(y) if isinstance(y, np.ndarray) else \
-            torch.tensor([y]).float()
+                torch.tensor([y]).float()
         # return torch.from_numpy(self.x[idx]).float(), torch.from_numpy(self.y[idx])
 
 
-class DatasetDataModule(LightningDataModule):
+class DatasetDataModule(pl.LightningDataModule):
     # TODO: add train test split
 
     def __init__(self,
@@ -289,26 +296,30 @@ class PandasDataModule(DatasetDataModule):
                                               self.test_df[self.targets_col].values)
 
 
-def load_model(model_or_class, path, model_kwargs, wrap=False):
+def load_model(model_or_class: pl.LightningModule, path: Union[str, IO], model_kwargs, wrap=False) -> pl.LightningModule:
     if wrap:
         model_or_class = wrap_model(model_or_class)
     return model_or_class.load_from_checkpoint(checkpoint_path=path,
                                                kwargs=model_kwargs)
 
 
-def wrap_model(base_model):
+def wrap_model(base_model: pl.LightningModule):
     # noinspection PyAbstractClass
     class WrapperModuleChild(WrapperModule):
-        def __init__(self, learning_rate, loss_fn=None):
+        def __init__(self,
+                     learning_rate: float,
+                     output_type: Literal["binary", "multiclass", "multilabel"] = "binary",
+                     loss_fn=F.cross_entropy):
             super(WrapperModuleChild, self).__init__(
                 base_model,
                 learning_rate,
+                output_type=output_type,
                 loss_fn=loss_fn)
 
     return WrapperModuleChild
 
 
-def set_deterministic(seed=42):
+def set_deterministic(seed: int = 42) -> None:
     # https://pytorch.org/docs/stable/notes/randomness.html
     pl.seed_everything(seed, workers=True)
     torch.use_deterministic_algorithms(True)
@@ -323,7 +334,6 @@ def train_model(model,
                 data_manager=None,
                 epochs=300,
                 deterministic=False):
-
     if deterministic:
         set_deterministic()
 
@@ -338,44 +348,49 @@ def train_model(model,
     callback_checkpoint = ModelCheckpoint(monitor='val_loss',
                                           dirpath=temp_checkpoint_path,
                                           filename="checkpoint-{val_acc:.2f}-{val_loss:.2f}-{epoch:02d}-at-{time_stamp}")
-    trainer = pl.Trainer(gpus=pyu.num_gpus(),
-                         callbacks=[
-                             # EarlyStopping(
-                             #     monitor='val_loss',
-                             #     patience=25
-                             # ),
-                             callback_checkpoint
-                         ],
-                         # log_every_n_steps=1,
-                         auto_lr_find=True,
-                         auto_scale_batch_size="power",
-                         max_epochs=epochs,
-                         logger=TensorBoardLogger(os.path.join(checkpoint_path, 'tensorboard')),
+    trainer = pl.Trainer(
+        accelerator=pyu.get_device_type(),
+        devices=-1,
+        callbacks=[
+            # EarlyStopping(
+            #     monitor='val_loss',
+            #     patience=25
+            # ),
+            InputMonitor(),
+            # CheckBatchGradient(),  #todo: see why broken
+            callback_checkpoint
+        ],
+        # log_every_n_steps=1,
+        auto_lr_find=True,
+        auto_scale_batch_size="power",
+        max_epochs=epochs,
+        logger=TensorBoardLogger(os.path.join(checkpoint_path, 'tensorboard')),
 
-                         benchmark=not deterministic,
-                         deterministic=deterministic)
+        benchmark=not deterministic,
+        deterministic=deterministic)
     # trainer.tune(lightning_model)
     trainer.fit(lightning_model, datamodule=dataset)
 
     print("Best Model", callback_checkpoint.best_model_path)
 
-    best_model = load_model(model_or_class=lightning_model_fn,
-                            path=callback_checkpoint.best_model_path,
-                            model_kwargs=train_kwargs)
+    model = load_model(model_or_class=lightning_model_fn,
+                       path=callback_checkpoint.best_model_path,
+                       model_kwargs=train_kwargs)
 
     if dataset.test_dataset is not None:
-        results = trainer.test(best_model, datamodule=dataset)
+        results = trainer.test(model, datamodule=dataset)
         print("Test Results", results)
 
-    best_model_path = fu.move(callback_checkpoint.best_model_path, checkpoint_path)
+    model_path = fu.move(callback_checkpoint.best_model_path, checkpoint_path)
     fu.remove_dirs(temp_checkpoint_path)
 
-    return best_model, best_model_path
+    return model, model_path
 
 
 def test_model(model, x=None, y=None, trainer=None, data=None):
     if trainer is None:
-        trainer = pl.Trainer(gpus=pyu.num_gpus())
+        trainer = pl.Trainer(accelerator=pyu.get_device_type(),
+                             devices=-1)
 
     if data is None:
         DatasetDataModule(test_dataset=NumpyXYDataset(x, y))
@@ -438,7 +453,7 @@ def overfit_and_get_averaged_loss(model, data_loader, steps=100, plot=True):
     trainer.fit(model, train_dataloaders=data_loader)
 
     # Return the moving average over the loss with a window of 100 steps
-    loss_running_mean = np.convolve(metric_tracker.collection, np.ones(steps)/steps, mode='valid')
+    loss_running_mean = np.convolve(metric_tracker.collection, np.ones(steps) / steps, mode='valid')
 
     # if plot:
     #     pltu.plot(data=loss_running_mean,
@@ -447,3 +462,34 @@ def overfit_and_get_averaged_loss(model, data_loader, steps=100, plot=True):
     #               y_label="Averaged loss")
     return loss_running_mean
 
+
+class InputMonitor(pl.Callback):
+    def on_train_batch_start(self,
+                             trainer: pl.Trainer,
+                             pl_module: pl.LightningModule,
+                             batch: Any,
+                             batch_idx: int,
+                             unused: Optional[int] = 0) -> None:
+        if (batch_idx + 1) % trainer.log_every_n_steps == 0:
+            x, y = batch
+            logger = trainer.logger
+            logger.experiment.add_histogram("input", x, global_step=trainer.global_step)
+            logger.experiment.add_histogram("target", y, global_step=trainer.global_step)
+
+
+class CheckBatchGradient(pl.Callback):
+    def on_train_start(self, trainer, model):
+        n = 0
+
+        example_input = model.example_input_array.to(model.device)
+        example_input.requires_grad = True
+
+        model.zero_grad()
+        output = model(example_input)
+        output[n].abs().sum().backward()
+
+        zero_grad_indexes = list(range(example_input.size(0)))
+        zero_grad_indexes.pop(n)
+
+        if example_input.grad[zero_grad_indexes].abs().sum().item() > 0:
+            raise RuntimeError("Your model mixes data across the batch dimension!")

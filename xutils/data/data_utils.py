@@ -1,3 +1,5 @@
+from typing import Dict, Any, Union
+
 import numpy as np
 import sklearn.utils as sku
 import sklearn.metrics as skm
@@ -13,7 +15,6 @@ import pandas as pd
 import xutils.core.python_utils as pyu
 import xutils.core.file_utils as fu
 import xutils.data.numpy_utils as nu
-import xutils.data.pandas_utils as pu
 import xutils.data.json_utils as ju
 
 
@@ -42,7 +43,11 @@ def get_balanced_weights(y):
     return sample_weights
 
 
-def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_encoded=False, print_results=True):
+def compare_results(actual: Union[pd.DataFrame, pd.Series, np.ndarray],
+                    predicted: Union[pd.DataFrame, pd.Series, np.ndarray],
+                    actual_hot_encoded: bool = False,
+                    predicted_hot_encoded: bool = False,
+                    print_results: bool = True) -> Dict[str, Any]:
     if actual_hot_encoded:
         actual = np.argmax(actual, axis=1)
     if predicted_hot_encoded:
@@ -108,35 +113,36 @@ def compare_results(actual, predicted, actual_hot_encoded=False, predicted_hot_e
     return results
 
 
-def split_data(x, y, train_split=0.8, scale=False):
-    x_train, x_test, y_train, y_test = train_test_split(
-        x,
-        y,
-        train_size=train_split,
-        test_size=None,
-        random_state=2,
-        shuffle=True,
-        stratify=y)
-
-    x_train, x_validation, y_train, y_validation = train_test_split(
-        x_train,
-        y_train,
-        train_size=train_split,
-        test_size=None,
-        random_state=2,
-        shuffle=True,
-        stratify=y_train)
-
-    data = {
-        "train": {"x": x_train, "y": y_train},
-        "test": {"x": x_test, "y": y_test},
-        "validation": {"x": x_validation, "y": y_validation}
-    }
-
-    if scale:
-        scale_split_data(data)
-
-    return data
+# todo: bring back? figure out scale / split
+# def split_data(x, y, train_split=0.8, scale=False):
+#     x_train, x_test, y_train, y_test = train_test_split(
+#         x,
+#         y,
+#         train_size=train_split,
+#         test_size=None,
+#         random_state=2,
+#         shuffle=True,
+#         stratify=y)
+#
+#     x_train, x_validation, y_train, y_validation = train_test_split(
+#         x_train,
+#         y_train,
+#         train_size=train_split,
+#         test_size=None,
+#         random_state=2,
+#         shuffle=True,
+#         stratify=y_train)
+#
+#     data = {
+#         "train": {"x": x_train, "y": y_train},
+#         "test": {"x": x_test, "y": y_test},
+#         "validation": {"x": x_validation, "y": y_validation}
+#     }
+#
+#     if scale:
+#         scale_split_data(data)
+#
+#     return data
 
 
 def scale_split_data(data):
@@ -256,7 +262,7 @@ class DataManager:
             "data": self.data_config
         }
 
-    def dump_config(self, path):
+    def dump_config(self, path: str):
         fu.create_parent_dirs(path)
         with open(path, 'wb') as config_file:
             pickle.dump({

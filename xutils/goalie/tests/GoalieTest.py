@@ -1,76 +1,145 @@
 import unittest
 
-from xutils.goalie.goal import goal, InputParam, MissingGoal, GoalParam
+from xutils.goalie import goal, MissingGoal, GoalParam
 
 
 class GoalieTest(unittest.TestCase):
     def test_basic(self):
         goal.reset()
 
+        @goal
+        def test_fun():
+            return 1
+
+        self.assertEqual(1, test_fun())
+        self.assertEqual(1, goal.run(test_fun))
+        self.assertEqual(1, goal.run("test_fun"))
+
+    def test_basic_params(self):
+        goal.reset()
+
+        @goal
+        def test_fun(x, y):
+            return x + y
+
+        self.assertEqual(3, test_fun(x=1, y=2))
+        self.assertEqual(3, goal.run(test_fun, x=1, y=2))
+        self.assertEqual(3, goal.run("test_fun", x=1, y=2))
+
+    def test_pre(self):
+        goal.reset()
+
         other_called = False
 
-        @goal(name="pre_fun")
+        @goal
         def pre_fun():
             nonlocal other_called
             other_called = True
             return 1
 
-        @goal(name="my_fun", pre=pre_fun)
+        @goal(pre=pre_fun)
         def my_fun():
             return 2
 
-        self.assertEqual(my_fun(), 2)
+        self.assertEqual(2, my_fun())
         self.assertEqual(other_called, True)
-        self.assertEqual(pre_fun(), 1)
+        other_called = False
 
-    # def test_basic_params(self):
-    #     goal.reset()
-    #
-    #     @goal
-    #     def my_fun():
-    #         return 2
-    #
-    #     @goal(params={"result_1": my_fun, "result_2": my_fun})
-    #     def my_fun_2(result_1, result_2):
-    #         return result_1, result_2
-    #
-    #     @goal("my_fun_param")
-    #     def my_fun_param(start=0):
-    #         return start
-    #
-    #     @goal("my_fun_3", pre=["my_fun_param", "my_fun_param"])
-    #     def my_fun_3(results, start=0):
-    #         return sum(results, start)
-    #
-    #     self.assertEqual(goal.run("my_fun_2"), (2, 2))
-        # self.assertEqual(my_fun_3(start=3), 9)
-        # self.assertEqual(goal.run("my_fun_3", start=3), 9)
+        self.assertEqual(2, goal.run(my_fun))
+        self.assertEqual(other_called, True)
+        other_called = False
 
-    # def test_mapped_goals(self):
-    #     @goal
-    #     def my_fun():
-    #         return 3
-    #
-    #     @goal(pre={"my_fun": "sally"})
-    #     def my_fun_2(bob, sally):
-    #         return bob * sally
-    #
-    #     self.assertEqual(my_fun(), 3)
-    #     self.assertEqual(my_fun_2(bob=2), 6)
-    #     self.assertEqual(goal.run("my_fun_2", bob=2), 6)
-    #
-    # def test_mapped_goals_list(self):
-    #     @goal
-    #     def my_fun():
-    #         return 3
-    #
-    #     @goal(pre=[("my_fun", "sally")])
-    #     def my_fun_2(bob=None, sally=None):
-    #         return bob * sally
-    #
-    #     self.assertEqual(my_fun(), 3)
-    #     self.assertEqual(my_fun_2(bob=2), 6)
-    #     self.assertEqual(goal.run("my_fun_2", bob=2), 6)
+        self.assertEqual(2, goal.run("my_fun"))
+        self.assertEqual(other_called, True)
+
+    def test_goal_params(self):
+        goal.reset()
+
+        @goal
+        def my_fun():
+            return 1
+
+        self.assertEqual(1, my_fun())
+
+        @goal(params={"x": my_fun.result()})
+        def my_fun_2(x):
+            return x + 1
+
+        self.assertEqual(2, my_fun_2())
+
+        @goal
+        def my_fun_3(y=my_fun.result()):
+            return y + 1
+
+        self.assertEqual(2, my_fun_3())
+
+    def test_default_scope(self):
+        goal.reset()
+
+        with goal.in_scope("test"):
+            @goal
+            def my_fun():
+                return 1
+
+            self.assertEqual(1, my_fun())
+
+            @goal(params={"x": my_fun.result()})
+            def my_fun_2(x):
+                return x + 1
+
+            self.assertEqual(2, my_fun_2())
+
+            @goal
+            def my_fun_3(y=my_fun.result()):
+                return y + 1
+
+            self.assertEqual(2, my_fun_3())
+
+        self.assertEqual(2, goal.run(scope="test", name="my_fun_2"))
+
+    def test_goal_pass(self):
+        goal.reset()
+
+        @goal
+        def my_fun(x=0, y=0):
+            return x + y
+
+        self.assertEqual(3, my_fun(x=1, y=2))
+
+        @goal
+        def my_fun_2(x=0,
+                     y=0,
+                     f=my_fun):
+            return f(x=x, y=y)
+
+        self.assertEqual(5, my_fun_2(x=1, y=4))
+        self.assertEqual(5, goal.run(my_fun_2, x=1, y=4))
+
+    def test_goal_pass_chain(self):
+        goal.reset()
+
+        @goal
+        def my_fun_pre_num(in_num: int = 0):
+            return in_num + 5
+
+        @goal
+        def my_fun_pre(num: int = my_fun_pre_num.result()):
+            return num
+
+        @goal
+        def my_fun(x=0, y=0, z=my_fun_pre.result()):
+            return x + y + z
+
+        self.assertEqual(13, my_fun(x=1, y=2, in_num=5))
+
+        @goal
+        def my_fun_2(x=0,
+                     y=0,
+                     f=my_fun):
+            return f(x=x, y=y)
+
+        self.assertEqual(15, my_fun_2(x=1, y=4, in_num=5))
+        self.assertEqual(15, goal.run(my_fun_2, x=1, y=4, in_num=5))
 
     def test_params(self):
         goal.reset()
@@ -79,15 +148,15 @@ class GoalieTest(unittest.TestCase):
         def my_fun():
             return 3
 
-        @goal(params={"sally": my_fun, "bob": InputParam("Bob")})
-        def my_fun_2(bob, sally):
+        @goal
+        def my_fun_2(bob, sally=my_fun.result()):
             return bob * sally
 
         self.assertEqual(my_fun(), 3)
         self.assertEqual(my_fun_2(bob=2), 6)
         self.assertEqual(goal.run("my_fun_2", bob=2), 6)
-        self.assertEqual(goal.requirements("my_fun_2"), {"my_fun", "my_fun_2"})
-        self.assertEqual([input_.name for input_ in goal.inputs("my_fun_2")], ['Bob'])
+        # self.assertEqual(goal.requirements("my_fun_2"), {"my_fun", "my_fun_2"})
+        self.assertEqual([input_ for input_ in goal.inputs("my_fun_2").keys()], ['bob'])
 
     def test_with_fun(self):
         goal.reset()
@@ -96,7 +165,7 @@ class GoalieTest(unittest.TestCase):
         def my_fun():
             return 3
 
-        @goal(params={"factor": my_fun})
+        @goal(params={"factor": my_fun.result()})
         def my_fun_2(factor: int):
             return 10 * factor
 
@@ -109,49 +178,12 @@ class GoalieTest(unittest.TestCase):
         def my_fun():
             return 5
 
-        @goal(params={"factor": my_fun})
+        @goal(params={"factor": my_fun.result()})
         def my_fun_2(factor):
             return 100 * factor
 
-        self.assertEqual(goal.run("my_fun_2"), 500)
-
-    # def test_other_scope(self):
-    #     goal.reset()
-    #
-    #     @goal
-    #     def my_fun():
-    #         return 5
-    #
-    #     @goal(params={"factor": my_fun})
-    #     def my_fun_2(factor):
-    #         return 100 * factor
-    #
-    #     self.assertEqual(goal.run("my_fun_2"), 500)
-    #
-    #     with goal.scope("my_scope"):
-    #         self.assertEqual(goal.run("my_fun_2", scope=goal.SCOPE_DEFAULT), 500)
-    #
-    #         with self.assertRaises(MissingGoal):
-    #             goal.run("my_fun_2")
-    #
-    #         @goal("my_fun_x")
-    #         def my_fun():
-    #             return 3
-    #
-    #         with self.assertRaises(MissingGoal):
-    #             goal.run("my_fun_x", scope=goal.SCOPE_DEFAULT)
-    #
-    #         @goal
-    #         def my_fun():
-    #             return 3
-    #
-    #         @goal(params={"factor": my_fun})
-    #         def my_fun_2(factor):
-    #             return 10 * factor
-    #
-    #         self.assertEqual(goal.run("my_fun_2"), 30)
-    #
-    #     self.assertEqual(goal.run("my_fun_2", scope="my_scope"), 30)
+        self.assertEqual(my_fun_2(factor=5), 500)
+        self.assertEqual(my_fun_2(), 500)
 
     def test_input_params(self):
         goal.reset()
@@ -160,7 +192,7 @@ class GoalieTest(unittest.TestCase):
         def my_fun(multiplier=5):
             return 5 * multiplier
 
-        @goal(params={"factor": my_fun})
+        @goal(params={"factor": my_fun.result()})
         def my_fun_2(factor):
             return 100 * factor
 
@@ -171,15 +203,11 @@ class GoalieTest(unittest.TestCase):
         goal.reset()
 
         @goal
-        def my_fun(multiplier=5):
+        def base_fun(multiplier: int = 5) -> int:
             return 5 * multiplier
 
-        @goal(params={"factor": GoalParam(my_fun, multiplier=100)})
-        def my_fun_2(factor):
-            return 100 * factor
-
-        self.assertEqual(goal.run("my_fun_2", multiplier=10), 5000)
-        self.assertEqual(goal.run("my_fun_2"), 50000)
+        self.assertEqual(goal.run("base_fun", multiplier=2), 10)
+        self.assertEqual(goal.run("base_fun"), 25)
 
     def test_cross_scope(self):
         goal.reset()
@@ -188,11 +216,11 @@ class GoalieTest(unittest.TestCase):
         def standard_fun(multiplier=5):
             return 5 * multiplier
 
-        @goal(scope="different", params={"factor": GoalParam(standard_fun, multiplier=100)})
+        @goal(scope="different", params={"factor": standard_fun.result(multiplier=100)})
         def my_fun_2(factor):
             return 100 * factor
 
-        @goal(params={"factor": my_fun_2})
+        @goal(params={"factor": my_fun_2.result()})
         def my_fun_3(factor):
             return 1000 * factor
 
@@ -211,11 +239,51 @@ class GoalieTest(unittest.TestCase):
         def my_fun():
             return 5
 
-        @goal(name="x_my_fun_2", params={"factor": my_fun})
+        @goal(name="x_my_fun_2", params={"factor": my_fun.result()})
         def my_fun_2(factor):
             return 100 * factor
 
-        @goal(name="x_my_fun_3", params={"factor": "x_my_fun"})
+        @goal(name="x_my_fun_3", params={"factor": goal.get("x_my_fun").result()})
+        def my_fun_3(factor):
+            return 1000 * factor
+
+        self.assertEqual(goal.run("x_my_fun_2"), 500)
+        self.assertEqual(my_fun_2(), goal.run("x_my_fun_2"))
+        self.assertEqual(goal.run("x_my_fun_3"), 5000)
+        self.assertEqual(my_fun_3(), goal.run("x_my_fun_3"))
+
+    def test_fun_params(self):
+        goal.reset()
+
+        @goal
+        def my_fun():
+            return 5
+
+        @goal
+        def my_fun_2(factor: int = my_fun.result()):
+            return 100 * factor
+
+        self.assertEqual(goal.run(my_fun_2), 100 * 5)
+
+        @goal(params={"factor2": my_fun.result()})
+        def my_fun_3(factor: int = my_fun.result(), factor2=None):
+            return 100 * factor * factor2
+
+        self.assertEqual(goal.run(my_fun_3), 100 * 5 * 5)
+        # self.assertEqual(my_fun_2(), goal.run("x_my_fun_2"))
+        # self.assertEqual(goal.run("x_my_fun_3"), 5000)
+        # self.assertEqual(my_fun_3(), goal.run("x_my_fun_3"))    def test_manual_name(self):
+        # goal.reset()
+
+        @goal(name="x_my_fun")
+        def my_fun():
+            return 5
+
+        @goal(name="x_my_fun_2", params={"factor": my_fun.result()})
+        def my_fun_2(factor):
+            return 100 * factor
+
+        @goal(name="x_my_fun_3", params={"factor": goal.get("x_my_fun").result()})
         def my_fun_3(factor):
             return 1000 * factor
 

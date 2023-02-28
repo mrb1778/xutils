@@ -1,7 +1,8 @@
 import os
+from typing import Callable
+
 import pandas as pd
 import numpy as np
-import typing
 
 import xutils.core.file_utils as fu
 import xutils.core.python_utils as pyu
@@ -246,7 +247,6 @@ def add_calc_column(df, column_name, calc_fn, cleanup=False):
     df[column_name] = calc_fn(df)
     if cleanup:
         drop_na(df)
-    print("add_calc_column post clean", "column_name", column_name, df.shape)
     return df
 
 
@@ -257,8 +257,8 @@ def concat_unique(dfs):
 
 def read_enrich_write(source_data_path: str,
                       save_path: str,
-                      enrich_fn: typing.Callable[[pd.DataFrame], pd.DataFrame],
-                      post_loader_fn: typing.Callable[[pd.DataFrame], pd.DataFrame] = None,
+                      enrich_fn: Callable[[pd.DataFrame], pd.DataFrame],
+                      post_loader_fn: Callable[[pd.DataFrame], pd.DataFrame] = None,
                       update_if_older: bool = True,
                       force_update: bool = False):
     def enrich_fn_wrapper(path):

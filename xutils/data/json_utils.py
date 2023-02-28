@@ -1,8 +1,6 @@
-import functools
 import inspect
 import json
-import typing
-
+from typing import List, Iterable
 import numpy as np
 import pandas as pd
 
@@ -46,7 +44,7 @@ class JsonExpander:
         pass
 
 
-json_handlers: typing.List[JsonExpander] = []
+json_handlers: List[JsonExpander] = []
 
 
 # @functools.wraps
@@ -54,6 +52,16 @@ def json_handler(handler):
     handler_instance = handler()
     json_handlers.append(handler_instance)
     return handler_instance
+
+
+@json_handler
+class DictPartsJsonExpander(JsonExpander):
+    def can_handle(self, obj):
+        d = dict()
+        return isinstance(obj, (d.keys().__class__, d.values().__class__))
+
+    def expand(self, obj):
+        return [expand_json(o) for o in obj]
 
 
 @json_handler

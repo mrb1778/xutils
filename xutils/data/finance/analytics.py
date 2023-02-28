@@ -1,5 +1,4 @@
-import time
-import typing
+from typing import Iterable, Dict
 
 import numpy as np
 import pandas as pd
@@ -83,17 +82,17 @@ SELL = 0
 # Technical indicators
 
 def calc_intervals(df: pd.DataFrame,
-                   intervals: typing.Iterable[int],
+                   intervals: Iterable[int],
                    prefix: str,
                    calc_fn,
-                   **kwargs) -> typing.Dict[str, pd.Series]:
+                   **kwargs) -> Dict[str, pd.Series]:
     return {f"{prefix}_{i}": calc_fn(df, i, **kwargs)
             for i in intervals}
 
 
 # not used
 def rsi(df: pd.DataFrame,
-        intervals: typing.Iterable[int],
+        intervals: Iterable[int],
         col_name: str = "close") -> None:
     """
     stockstats lib seems to use 'close' column by default so col_name
@@ -116,8 +115,8 @@ def rsi_ta(df: pd.DataFrame, interval: int, col_name: str) -> pd.Series:
 
 
 def rsi_smooth(df: pd.DataFrame,
-               intervals: typing.Iterable[int],
-               col_name: str = "close") -> typing.Dict[str, pd.Series]:
+               intervals: Iterable[int],
+               col_name: str = "close") -> Dict[str, pd.Series]:
     """
     Momentum indicator
     As per https://www.investopedia.com/terms/r/rsi.asp
@@ -359,7 +358,7 @@ def bb_mav(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Serie
     return volatility.bollinger_mavg(df[col_name], window=interval, fillna=True)
 
 
-def cmo(df: pd.DataFrame, intervals: typing.Iterable[int], col_name: str = "close") -> typing.Dict[str, pd.Series]:
+def cmo(df: pd.DataFrame, intervals: Iterable[int], col_name: str = "close") -> Dict[str, pd.Series]:
     """
     Chande Momentum Oscillator
     As per https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/cmo
@@ -695,7 +694,7 @@ def ta_indicators(df: pd.DataFrame) -> pd.DataFrame:
                                   fillna=True)
 
 
-def technical_indicators(df: pd.DataFrame, intervals: typing.Iterable[int], col_name: str = 'close') -> pd.DataFrame:
+def technical_indicators(df: pd.DataFrame, intervals: Iterable[int], col_name: str = 'close') -> pd.DataFrame:
     df_ss = sdf.retype(df)
 
     # res = rsi_smooth(df_ss, [intervals[0]], col_name=col_name)['rsi_' + str(intervals[0])]

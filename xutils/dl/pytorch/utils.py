@@ -14,6 +14,10 @@ def get_device():
     return "cuda:0" if has_gpu() else "cpu"
 
 
+def get_device_type():
+    return "gpu" if has_gpu() else "cpu"
+
+
 def num_gpus():
     return torch.cuda.device_count()
 
