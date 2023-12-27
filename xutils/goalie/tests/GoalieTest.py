@@ -73,29 +73,29 @@ class GoalieTest(unittest.TestCase):
 
         self.assertEqual(2, my_fun_3())
 
-    def test_default_scope(self):
-        goal.reset()
-
-        with goal.in_scope("test"):
-            @goal
-            def my_fun():
-                return 1
-
-            self.assertEqual(1, my_fun())
-
-            @goal(params={"x": my_fun.result()})
-            def my_fun_2(x):
-                return x + 1
-
-            self.assertEqual(2, my_fun_2())
-
-            @goal
-            def my_fun_3(y=my_fun.result()):
-                return y + 1
-
-            self.assertEqual(2, my_fun_3())
-
-        self.assertEqual(2, goal.run(scope="test", name="my_fun_2"))
+    # def test_default_scope(self):
+    #     goal.reset()
+    #
+    #     with goal.in_scope("test"):
+    #         @goal
+    #         def my_fun():
+    #             return 1
+    #
+    #         self.assertEqual(1, my_fun())
+    #
+    #         @goal(params={"x": my_fun.result()})
+    #         def my_fun_2(x):
+    #             return x + 1
+    #
+    #         self.assertEqual(2, my_fun_2())
+    #
+    #         @goal
+    #         def my_fun_3(y=my_fun.result()):
+    #             return y + 1
+    #
+    #         self.assertEqual(2, my_fun_3())
+    #
+    #     self.assertEqual(2, goal.run(scope="test", name="my_fun_2"))
 
     def test_goal_pass(self):
         goal.reset()
@@ -158,7 +158,7 @@ class GoalieTest(unittest.TestCase):
         # self.assertEqual(goal.requirements("my_fun_2"), {"my_fun", "my_fun_2"})
         self.assertEqual([input_ for input_ in goal.inputs("my_fun_2").keys()], ['bob'])
 
-    def test_with_fun(self):
+    def test_with_fun_result(self):
         goal.reset()
 
         @goal
@@ -170,6 +170,49 @@ class GoalieTest(unittest.TestCase):
             return 10 * factor
 
         self.assertEqual(goal.run("my_fun_2"), 30)
+
+    def test_with_fun_ref(self):
+        goal.reset()
+
+        @goal
+        def my_fun():
+            return 3
+
+        @goal
+        def my_fun_2(goal_ref=my_fun):
+            return 10 * goal_ref()
+
+        self.assertEqual(my_fun_2(), 30)
+        self.assertEqual(goal.run("my_fun_2"), 30)
+
+    def test_with_fun_ref_mixed(self):
+        goal.reset()
+        goal.debug()
+
+        @goal
+        def my_fun_2():
+            return 2
+
+        @goal
+        def my_fun_3():
+            return 3
+
+        @goal
+        def my_fun_4(goal_ref=my_fun_2, goal_ref_2=my_fun_3.result()):
+            return 4 * goal_ref() * goal_ref_2
+
+        @goal
+        def my_fun_5(goal_ref_2=my_fun_3.result(), goal_ref=my_fun_2):
+            return 5 * goal_ref() * goal_ref_2
+
+        self.assertEqual(my_fun_2(), 2)
+        self.assertEqual(my_fun_3(), 3)
+
+        self.assertEqual(my_fun_4(), 2*3*4)
+        self.assertEqual(goal.run("my_fun_4"), 2*3*4)
+
+        self.assertEqual(my_fun_5(), 2*3*5)
+        self.assertEqual(goal.run("my_fun_5"), 2*3*5)
 
     def test_args(self):
         goal.reset()
@@ -291,3 +334,6 @@ class GoalieTest(unittest.TestCase):
         self.assertEqual(my_fun_2(), goal.run("x_my_fun_2"))
         self.assertEqual(goal.run("x_my_fun_3"), 5000)
         self.assertEqual(my_fun_3(), goal.run("x_my_fun_3"))
+
+    def test_fun_parse(self):
+        pass

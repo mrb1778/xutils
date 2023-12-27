@@ -2,21 +2,25 @@ from __future__ import annotations
 import argparse
 import functools
 import time
-from typing import Union, Dict, List, Callable, Literal, Optional, Tuple, Any, Set, Type, Iterable
+import re
+import typing
+from typing import Union, Dict, List, Callable, Literal, Optional, Tuple, Any, Type, Iterable, Sequence
 
-import xutils.core.python_utils as pu
+import xutils.core.python_utils as pyu
+import xutils.data.config_utils as cu
 import xutils.data.json_utils as ju
 
 
 class GoalDefinition:
     def __init__(self,
-                 executor: Callable,
                  name: str,
                  scope: Optional[str] = None,
                  pre=None,
                  post=None,
-                 params=None,
+                 params_as_goals=None,
+                 params: Dict[str, GoalParam] = None,
                  refs=None,
+                 executor: Callable = None,
                  executor_return_type: Optional[Type] = None,
                  executor_params: Iterable[Dict[str, Any]] = None,
                  goal_manager: GoalManager = None) -> None:
@@ -34,46 +38,57 @@ class GoalDefinition:
         self.ref_goals: List[GoalDefinition] = list(goal_manager.find(scope=scope, goals=refs).values()) \
             if refs is not None else []
 
-        goal_params = {}
-        if params is not None:
-            for param_name, param_value in params.items():
+        self.params: Dict[str, GoalParam] = params if params is not None else {}
+        if params_as_goals is not None:
+            for param_name, param_value in params_as_goals.items():
                 if isinstance(param_value, GoalParam):
                     if param_value.name is None:
                         param_value.name = param_name
-                    goal_params[param_name] = param_value
+                    self.params[param_name] = param_value
                 else:
-                    goal_params[param_name] = GoalParam(name=param_name,
+                    self.params[param_name] = GoalParam(name=param_name,
                                                         goal=param_value)
-        self.params: Dict[str, GoalParam] = goal_params
 
         self.executor = executor
         self.executor_return_type: Optional[Type] = executor_return_type
 
-        functools.update_wrapper(self, self.executor)
+        if self.executor is not None:
+            functools.update_wrapper(self, self.executor)
 
-        for param in executor_params:
-            param_name = param["name"]
+        if executor_params is not None:
+            for param in executor_params:
+                param_name = param["name"]
 
-            if param_name not in self.params:
-                default_value = param["default"]
-                if isinstance(default_value, GoalParam):
-                    default_value.name = param_name
-                    self.params[param_name] = default_value
-                else:
-                    self.params[param_name] = GoalParam(name=param_name,
-                                                        required=param["required"],
-                                                        default=default_value,
-                                                        data_type=param["type"])
+                if param_name not in self.params:
+                    default_value = param["default"]
+                    if isinstance(default_value, GoalParam):
+                        default_value.name = param_name
+                        self.params[param_name] = default_value
+                    else:
+                        self.params[param_name] = GoalParam(name=param_name,
+                                                            required=param["required"],
+                                                            default=default_value,
+                                                            data_type=param["type"],
+                                                            kwargs=param["kwargs"])
 
     def execute(self, possible_kwargs):
-        run_kwargs = self.param_defaults()
+        run_kwargs = {**self.param_defaults}
         for kwarg_name, kwarg_value in possible_kwargs.items():
             if kwarg_name in self.params:
                 run_kwargs[kwarg_name] = kwarg_value
+
         return self.executor(**run_kwargs)
 
     def from_json(self, json):
         pass
+
+    def referenced(self):
+        return {
+            *self.pre_goals,
+            *self.post_goals,
+            *self.ref_goals,
+            *[param.goal for param in self.params_with_goals().values()]
+        }
 
     def inputs(self) -> Dict[str, GoalParam]:
         found_inputs = {}
@@ -100,7 +115,18 @@ class GoalDefinition:
                 for param_name, param_value in self.params.items()
                 if param_value.goal is not None}
 
+    def param_kwargs(self) -> Optional[GoalParam]:
+        for param in self.params.values():
+            if param.kwargs:
+                return param
+
+        return None
+
+    @property
     def param_defaults(self):
+        """
+        Returns a dictionary of parameter names and their default values.
+        """
         return {param_name: param_value.default
                 for param_name, param_value in self.params.items()
                 if param_value.default is not None}
@@ -132,11 +158,239 @@ class GoalDefinition:
                          **kwargs)
 
     def __call__(self, **kwargs):
+        return self.run(**kwargs)
+
+    def run(self, **kwargs):
         return self.goal_manager.run(self, **kwargs)
+
+    def run_later(self, **kwargs):
+        return self.goal_manager.run_later(self, **kwargs)
 
     def __str__(self) -> str:
         return F'{self.scope}:{self.name}' \
             if self.scope is not None else self.name
+
+
+class CurriedGoal(GoalDefinition):
+    def __init__(self,
+                 goal: GoalDefinition = None,
+                 fun_kwargs: Optional[Dict[str, Any]] = None,
+                 **kwargs) -> None:
+        super().__init__(name=goal.name, scope=goal.scope, goal_manager=goal.goal_manager)
+        self.goal = goal
+        self.fun_kwargs = fun_kwargs
+        self.kwargs = kwargs
+
+    def __call__(self, **kwargs):
+        return self.goal(**{**self.fun_kwargs, **self.kwargs, **kwargs})
+
+
+class GoalRef(typing.NamedTuple):
+    goal: str
+    kwargs: Dict[str, Any]
+    now: bool = False
+
+
+class DynamicGoal(GoalDefinition):
+    PARAMS_KEY = "params"
+
+    def __init__(self,
+                 name: str,
+                 scope: Optional[str] = None,
+                 goal_manager: GoalManager = None,
+                 exec_goal: Union[str, GoalDefinition] = None,
+                 goal_def: Union[str, Dict[str, Any]] = None,
+                 run_regex: str = r'=(.*)',
+                 run_param_regex: str = r'=\{\{(.*)\}\}',
+                 ref_regex: str = r'\&(.*)',
+                 param_regex: str = r'\{\{(.*)\}\}',
+                 meta_param: str = '@') -> None:
+        super().__init__(name=name, scope=scope, goal_manager=goal_manager)
+        self.run_regex: re.Pattern = re.compile(run_regex)
+        self.run_param_regex: re.Pattern = re.compile(run_param_regex)
+        self.ref_regex: re.Pattern = re.compile(ref_regex)
+        self.param_regex: re.Pattern = re.compile(param_regex)
+        self.meta_param: str = meta_param
+        # self.meta_regex: re.Pattern = re.compile(meta_regex)
+        self.exec_goal = exec_goal
+        self.goal_def = goal_def
+        self._parse_meta()
+        # self._populate_params()
+        # self.params = {'kwargs': GoalParam(name='kwargs', kwargs=True)}
+        # self.params = {}
+        # self.params = {'kwargs': GoalParam(name='kwargs', kwargs=True)}
+
+    def _parse_meta(self):
+        # todo: values should be eval at run time not construction
+        if isinstance(self.goal_def, dict):
+            if len(self.goal_def) == 2 and self.meta_param in self.goal_def:
+                self.meta_params = self.goal_def.get(self.meta_param)
+                self.goal_def = self.goal_def.copy()
+                self.goal_def.pop(self.meta_param)
+
+                if self.PARAMS_KEY in self.meta_params:
+                    # todo: implement
+                    pass
+
+    def _populate_params(self):
+        self._parse_params(self.goal_def)
+
+    def _parse_params(self, what):
+        if isinstance(what, GoalDefinition):
+            self.params.update(what.params)
+        elif isinstance(what, str):
+            # run_regex_check = re.fullmatch(self.run_regex, what)
+            # ref_regex_check = re.fullmatch(self.ref_regex, what)
+            run_param_regex_check = re.fullmatch(self.run_param_regex, what)
+            param_regex_check = re.fullmatch(self.param_regex, what)
+
+            # if ref_regex_check is not None:
+            #     self.params.update(self.goal_manager.get(ref_regex_check.group(1)).params)
+            # elif run_regex_check is not None:
+            #     self.params.update(self.goal_manager.get(run_regex_check.group(1)).params)
+            # elif param_regex_check is not None:
+            if run_param_regex_check is not None:
+                self.params[run_param_regex_check.group(1)] = GoalParam(name=run_param_regex_check.group(1),
+                                                                        required=False)
+            if param_regex_check is not None:
+                self.params[param_regex_check.group(1)] = GoalParam(name=param_regex_check.group(1),
+                                                                    required=False)
+        elif isinstance(what, dict):
+            first_key = next(iter(what))
+            run_regex_check = re.fullmatch(self.run_regex, first_key)
+            ref_regex_check = re.fullmatch(self.ref_regex, first_key)
+            if len(what) == 1 and (run_regex_check is not None or ref_regex_check is not None):
+                for goal_name, goal_params in what.items():
+                    for param_name, param_value in goal_params.items():
+                        self._populate_params(param_name)
+                        self._populate_params(param_value)
+                    if run_regex_check is not None:
+                        self.params.update(self.goal_manager.get(run_regex_check.group(1)).params)
+                    else:
+                        self.params.update(self.goal_manager.get(ref_regex_check.group(1)).params)
+            else:
+                for key, value in what.items():
+                    self._populate_params(key)
+                    self._populate_params(value)
+        elif isinstance(what, List):
+            for item in what:
+                self._populate_params(item)
+
+    def execute(self, possible_kwargs: Dict[str, Any]):
+        print("goal.py::execute:268:", possible_kwargs, ":(possible_kwargs)")
+        dynamic_result = self._dynamic_execute(self.goal_def, possible_kwargs)
+        if self.exec_goal is not None:
+            print("goal.py::execute:270:", self.exec_goal, ":(self.exec_goal)")
+            print("goal.py::execute:271:", dynamic_result, ":(dynamic_result)")
+            return self.goal_manager.run(goal=self.exec_goal, possible_kwargs={**dynamic_result, **possible_kwargs})
+        else:
+            return dynamic_result
+
+    def _dynamic_execute(self, what, possible_kwargs: Dict[str, Any]):
+        # todo: move to @functools.singledispatchmethod, bugs with List Dict
+        if isinstance(what, str):
+            return self._dynamic_execute_str(what, possible_kwargs)
+        elif isinstance(what, dict):
+            return self._dynamic_execute_dict(what, possible_kwargs)
+        elif isinstance(what, list):
+            return self._dynamic_execute_list(what, possible_kwargs)
+        else:
+            return what
+
+    def _dynamic_execute_str(self, what: str, possible_kwargs: Dict[str, Any]):
+        run_regex_check = re.fullmatch(self.run_regex, what)
+        ref_regex_check = re.fullmatch(self.ref_regex, what)
+        param_regex_check = re.fullmatch(self.param_regex, what)
+
+        if ref_regex_check is not None:
+            # return self.goal_manager.run_later(ref_regex_check.group(1), fun_kwargs=possible_kwargs)
+            return self.goal_manager.run_later(
+                goal=DynamicGoal(name=f"{self.name}:RunLater:{ref_regex_check.group(1)}",
+                                 goal_def=ref_regex_check.group(1),
+                                 goal_manager=self.goal_manager),
+                fun_kwargs=possible_kwargs.copy())
+        elif run_regex_check is not None:
+            run_param_regex_check = re.fullmatch(self.run_param_regex, what)
+            if run_param_regex_check is not None:
+                run_goal = possible_kwargs[run_param_regex_check.group(1)]
+            else:
+                run_goal = run_regex_check.group(1)
+            print("goal.py::_dynamic_execute_str:303:", run_goal, ":(run_goal)")
+            return self.goal_manager.run(run_goal, fun_kwargs=possible_kwargs)
+        elif param_regex_check is not None:
+            var_name = param_regex_check.group(1)
+            if var_name not in possible_kwargs:
+                return None
+                # todo: only throw for execute, not ref
+                # raise ValueError(
+                #     f"Goal '{self.name}' expected '{var_name}'. Not found in: '[{', '.join(possible_kwargs.keys())}]'")
+            else:
+                return possible_kwargs[var_name]
+        else:
+            return what
+
+    def _dynamic_execute_dict(self, what: Dict, possible_kwargs: Dict[str, Any]):
+        dynamic_goal = self._get_dynamic_goal(what)
+
+        if dynamic_goal is None:
+            return {
+                self._dynamic_execute(key, possible_kwargs=possible_kwargs):
+                    self._dynamic_execute(value, possible_kwargs=possible_kwargs)
+                for key, value in what.items()
+            }
+        elif dynamic_goal.now:
+            print("goal.py::_dynamic_execute_dict:336:", possible_kwargs, ":(possible_kwargs)")
+            return self.goal_manager.run(
+                goal=dynamic_goal.goal,
+                fun_kwargs=self._dynamic_execute(
+                    what=dynamic_goal.kwargs,
+                    possible_kwargs=possible_kwargs.copy()),
+                **possible_kwargs.copy())
+        else:
+            dynamic_goal = DynamicGoal(
+                name=f"{self.name}:{dynamic_goal.goal}:runLater",
+                goal_def={f"={dynamic_goal.goal}": dynamic_goal.kwargs},
+                goal_manager=self.goal_manager
+            )
+            dynamic_goal.run_later(**possible_kwargs)
+
+    def _get_dynamic_goal(self, what: Dict) -> Optional[GoalRef]:
+        keys = list(what.keys())
+        if len(what) in (1, 2):
+            first_key = keys[0]
+            if len(what) == 1:
+                fn_name = first_key
+            elif len(what) == 2 and first_key == self.meta_param:
+                fn_name = keys[1]
+            else:
+                return None
+
+            fn_body = what[fn_name]
+
+            run_match = re.fullmatch(self.run_regex, fn_name)
+            ref_match = re.fullmatch(self.ref_regex, fn_name)
+            if run_match is not None:
+                return GoalRef(
+                    now=True,
+                    goal=run_match.group(1),
+                    kwargs=fn_body
+                )
+            elif ref_match is not None:
+                return GoalRef(
+                    now=False,
+                    goal=ref_match.group(1),
+                    kwargs=fn_body
+                )
+            else:
+                return None
+        else:
+            return None
+
+    def _dynamic_execute_list(self, what: List, possible_kwargs: Dict[str, Any]):
+        return [
+            self._dynamic_execute(item, possible_kwargs=possible_kwargs)
+            for item in what
+        ]
 
 
 class GoalParam:
@@ -149,6 +403,7 @@ class GoalParam:
                  required: bool = False,
                  goal: Optional[Union[str, Callable, GoalDefinition]] = None,
                  run_goal: bool = False,
+                 kwargs: bool = False,
                  **goal_kwargs) -> None:
         self.name = name
 
@@ -175,6 +430,8 @@ class GoalParam:
             self.data_type = type(self.default)
         else:
             self.data_type = None
+
+        self.kwargs = kwargs
 
     def inputs(self) -> Dict[str, GoalParam]:
         if self.goal:
@@ -207,11 +464,13 @@ class GoalParam:
 
 
 class MissingGoal(Exception):
-    pass
+    def __init__(self, goal, scope=None, message: str = None) -> None:
+        super().__init__(goal, scope, message)
 
 
 class DuplicateGoal(Exception):
-    pass
+    def __init__(self, goal, scope=None, message: str = None) -> None:
+        super().__init__(goal, scope, message)
 
 
 class UnmetGoal(Exception):
@@ -274,18 +533,18 @@ class GoalManager:
 
     def __init__(self) -> None:
         self.print_logs = False
-        self.lib: pu.DictAccess[str, pu.DictAccess[str, GoalDefinition]] = pu.DictAccess()
+        self.lib: pyu.DictAccess[str, pyu.DictAccess[str, GoalDefinition]] = pyu.DictAccess()
         self.core_lib = {self.SCOPE_STANDARD: self.add_scope(self.SCOPE_STANDARD)}
         self.scope_default: Optional[str] = None
-        
+
     def get_scope(self, scope: Optional[str] = None):
         return self.scope_default if scope is None else scope
-    
+
     def add_scope(self,
                   scope: str,
-                  values: Optional[pu.DictAccess[str, GoalDefinition]] = None) -> pu.DictAccess[str, GoalDefinition]:
+                  values: Optional[pyu.DictAccess[str, GoalDefinition]] = None) -> pyu.DictAccess[str, GoalDefinition]:
         if scope not in self.lib:
-            scoped_goals = pu.DictAccess() if values is None else values
+            scoped_goals = pyu.DictAccess() if values is None else values
             self.lib[scope] = scoped_goals
             return scoped_goals
         else:
@@ -297,23 +556,33 @@ class GoalManager:
     def find(self,
              scope: Optional[str] = None,
              goals: Optional[List[Union[str, Callable, GoalDefinition]]] = None,
-             fail_if_missing: bool = True) -> pu.DictAccess[str, GoalDefinition]:
+             search_core: bool = True,
+             fail_if_missing: bool = True) -> pyu.DictAccess[str, GoalDefinition]:
         scope = self.get_scope(scope)
-        
+
         if goals is not None:
             if not isinstance(goals, List):
                 goals = [goals]
             if len(goals) == 0:
-                return pu.DictAccess()
+                return pyu.DictAccess()
 
         scoped_goals = self.lib.get(scope)
+        if search_core:
+            core_lib = self.core_lib.get(self.SCOPE_STANDARD)
+            if scoped_goals is None:
+                scoped_goals = core_lib
+            elif core_lib is not None:
+                new_scoped_goals = pyu.DictAccess()
+                new_scoped_goals.update(core_lib)
+                new_scoped_goals.update(scoped_goals)
+                scoped_goals = new_scoped_goals
 
         if scoped_goals is None:
-            return pu.DictAccess()
+            return pyu.DictAccess()
         elif goals is None:
             return scoped_goals
         else:
-            filtered_goals = pu.DictAccess()
+            filtered_goals = pyu.DictAccess()
             for goal in goals:
                 if isinstance(goal, GoalDefinition):
                     filtered_goals[goal.name] = goal
@@ -321,7 +590,7 @@ class GoalManager:
                     if goal in scoped_goals:
                         filtered_goals[goal] = scoped_goals[goal]
                     elif fail_if_missing:
-                        raise MissingGoal(goal)
+                        raise MissingGoal(goal, scope)
                 else:
                     raise ValueError(f"{goal} is not a valid goal type")
 
@@ -357,7 +626,7 @@ class GoalManager:
         if scoped_goals is None:
             scoped_goals = self.add_scope(scope=scope)
         if not overwrite and goal_def.name in scoped_goals:
-            raise DuplicateGoal(goal_def.name)
+            raise DuplicateGoal(goal_def.name, scope)
         scoped_goals[goal_def.name] = goal_def
 
         goal_def.goal_manager = self
@@ -383,11 +652,11 @@ class GoalManager:
             goal_def = GoalDefinition(name=name,
                                       scope=scope,
                                       executor=fun,
-                                      executor_return_type=pu.return_type(fun),
-                                      executor_params=pu.params(fun).values(),
+                                      executor_return_type=pyu.return_type(fun),
+                                      executor_params=pyu.params(fun).values(),
                                       pre=pre,
                                       post=post,
-                                      params=params,
+                                      params_as_goals=params,
                                       refs=refs,
                                       goal_manager=self)
             self.add(goal_def)
@@ -460,21 +729,11 @@ class GoalManager:
             return inputs
 
     def run(self,
-            name,
+            goal: Union[str, GoalDefinition] = None,
             scope: Optional[str] = None,
             context: Optional[GoalRunContext] = None,
+            fun_kwargs: Optional[Dict[str, Any]] = None,
             **kwargs):
-        return self._run(context=context,
-                         goal=name,
-                         scope=scope,
-                         fun_kwargs={**kwargs})
-
-    def _run(self,
-             goal: Union[str, List, Tuple, GoalDefinition] = None,
-             scope: Optional[str] = None,
-             context: Optional[GoalRunContext] = None,
-             fun_kwargs: Optional[Dict[str, Any]] = None):
-
         scope = self.get_scope(scope)
 
         context = GoalRunContext(goal=goal,
@@ -482,191 +741,130 @@ class GoalManager:
                                  parent=context,
                                  phase="Run")
 
+        fun_kwargs = {
+            **(fun_kwargs if fun_kwargs is not None else {}),
+            **kwargs
+        }
+
+        # self.log(context, "Start", fun_kwargs)
         self.log(context, "Start")
 
-        if isinstance(goal, (list, tuple)):
-            results = []
-            for goal_name in goal:
-                results.append(self._run(context=context,
-                                         goal=goal_name,
-                                         scope=scope,
-                                         fun_kwargs=fun_kwargs))
-            return results
-        else:
-            if isinstance(goal, GoalDefinition):
-                goal_def = goal
-            elif goal is not None:
-                goal_def = self.get(goal, scope=scope)
-            else:
+        goal_def = self.get(goal, scope=scope)
+        if goal_def is None:
+            raise UnmetGoal(goal,
+                            phase="run",
+                            message=f"Error in run goal is missing")
+
+        updated_kwargs = fun_kwargs.copy()
+
+        results = []
+        for pre in goal_def.pre_goals:
+            try:
+                result = self.run(context=context,
+                                  goal=pre,
+                                  scope=scope,
+                                  fun_kwargs=fun_kwargs)
+                results.append(result)
+            except Exception as e:
+                raise UnmetGoal(goal=pre, phase="pre", message="Pre Failed") from e
+
+        for param_name, param_value in goal_def.params_with_goals().items():
+            param_goal: GoalDefinition = param_value.goal
+            try:
+                if param_value.run_goal:
+                    print("goal.py::run:766")
+                    updated_kwargs[param_name] = self.run(context=context,
+                                                          scope=scope,
+                                                          goal=param_goal,
+                                                          fun_kwargs=param_value.goal_inputs,
+                                                          **updated_kwargs)
+                else:
+                    print("goal.py::run:773")
+                    updated_kwargs[param_name] = self.run_later(goal=param_goal,
+                                                                scope=scope,
+                                                                fun_kwargs=param_value.goal_inputs,
+                                                                **updated_kwargs)
+            except Exception as e:
+                print('Unmet', {**param_value.goal_inputs,
+                                **updated_kwargs})
                 raise UnmetGoal(goal,
-                                phase="run",
-                                message=f"Error in run goal is missing")
+                                phase="param",
+                                message=f"Error in param {goal}({param_name}:{param_goal.name}) -> {e}") from e
+        self.log(context, "Run")
 
-            updated_kwargs = fun_kwargs.copy()
+        result = goal_def.execute(updated_kwargs)
 
-            results = []
-            for pre in goal_def.pre_goals:
-                try:
-                    result = self._run(context=context,
-                                       goal=pre,
-                                       scope=scope,
-                                       fun_kwargs=fun_kwargs)
-                    results.append(result)
-                except Exception as e:
-                    raise UnmetGoal(goal=pre, phase="pre", message="Pre Failed") from e
+        for post in goal_def.post_goals:
+            try:
+                result = self.run(context=context,
+                                  goal=post,
+                                  scope=scope,
+                                  fun_kwargs=fun_kwargs)
+                results.append(result)
+            except Exception as e:
+                raise UnmetGoal(goal=goal, phase="post", message="Error in post") from e
 
-            for param_name, param_value in goal_def.params_with_goals().items():
-                param_goal: GoalDefinition = param_value.goal
-                try:
-                    if param_value.run_goal:
-                        updated_kwargs[param_name] = self._run(context=context,
-                                                               goal=param_goal,
-                                                               fun_kwargs={**param_value.goal_inputs,
-                                                                           **updated_kwargs})  # todo: use strict fun kwargs?
-                    else:
-                        updated_kwargs[param_name] = lambda **param_invoke_kwargs: self._run(
-                            context=context,
-                            goal=param_goal,
-                            scope=scope,
-                            fun_kwargs={**param_value.goal_inputs,
-                                        **updated_kwargs,
-                                        **param_invoke_kwargs})
-                except Exception as e:
-                    raise UnmetGoal(goal,
-                                    phase="param",
-                                    message=f"Error in param {goal}({param_name}:{param_goal.name}) -> {e}") from e
-            self.log(context, "Run")
+        self.log(context, "End")
+        return result
 
-            result = goal_def.execute(updated_kwargs)
+        # updated_kwargs[param_name] = lambda **param_invoke_kwargs: self._run(
+        #     context=context,
+        #     goal=param_goal,
+        #     scope=scope,
+        #     fun_kwargs={**param_value.goal_inputs,
+        #                 **updated_kwargs,
+        #                 **param_invoke_kwargs})
 
-            for post in goal_def.post_goals:
-                try:
-                    result = self._run(context=context,
-                                       goal=post,
-                                       scope=scope,
-                                       fun_kwargs=fun_kwargs)
-                    results.append(result)
-                except Exception as e:
-                    raise UnmetGoal(goal=goal, phase="post", message="Error in post") from e
+    def run_later(self,
+                  goal: Union[str, GoalDefinition] = None,
+                  scope: Optional[str] = None,
+                  fun_kwargs: Optional[Dict[str, Any]] = None,
+                  **kwargs):
+        scope = self.get_scope(scope)
+        goal_def = self.get(goal, scope=scope)
 
-            self.log(context, "End")
+        return CurriedGoal(goal=goal_def,
+                           fun_kwargs=fun_kwargs if fun_kwargs is not None else {},
+                           **kwargs)
 
-            return result
-
-    def log(self, context, action):
-        if self.print_logs:
-            print((context.level * 5) * " ",
-                  "@Goal(",
-                  *((context.scope, "::") if context.scope is not None else ()),
-                  context.goal, ') -> ',
-                  action,
-                  " Time: ", time.time() - context.start_time)
-
-    def run_batch(self, batch=None, path=None, scope: Optional[str] = None, run_kwargs=None):
+    def run_batch(self,
+                  batch=None,
+                  path=None,
+                  scope: Optional[str] = None,
+                  run_kwargs=None):
         scope = self.get_scope(scope)
 
         if run_kwargs is None:
             run_kwargs = {}
 
         if path is not None:
-            batch = ju.read_file(path)
+            batch = cu.read_file(path)
         elif isinstance(batch, str):
             batch = ju.read(batch)
 
         if batch is None:
-            raise ValueError("json or json file required")
+            raise ValueError("json string or file required")
+
+        if "debug" in batch and not self.print_logs:
+            self.debug(batch["debug"])
 
         if "params" in batch:
             run_kwargs.update(batch["params"])
 
-        batch_results = []
-        goals = batch["goals"]
-        if isinstance(goals, dict):
-            goals = [goals]
-        for goal_entry in goals:
-            batch_result = self._run_batch_goal(goal_entry=goal_entry,
-                                                goal_args=run_kwargs,
-                                                scope=scope)
-            run_kwargs["__previous_result__"] = batch_result
-            batch_results.append(batch_result)
-        return batch_results
+        if "goals" in batch:
+            goals = batch["goals"]
+            for goal_name, goal_def in goals.items():
+                self.add(DynamicGoal(name=goal_name,
+                                     goal_def=goal_def,
+                                     goal_manager=self))
 
-    def _run_batch_goal(self, goal_entry: dict, goal_args: dict, scope: Optional[str] = None):
-        scope = self.get_scope(scope)
-
-        if "params" in goal_entry:
-            for param_key, param_value in goal_entry["params"].items():
-                if isinstance(param_value, dict):
-                    goal_args[param_key] = self.run(goal_entry["goal"], scope=scope, **goal_args)
-                else:
-                    goal_args[param_key] = param_value
-            goal_args.update()
-        if "argParams" in goal_entry:
-            for arg_param_key, arg_param_value in goal_entry["argParams"].items():
-                goal_args[arg_param_key] = goal_args[arg_param_value]
-
-        if "loop" in goal_entry:
-            loop_entry = goal_entry["loop"]
-            if "goals" in loop_entry:
-                goals = loop_entry["goals"]
-            elif "goal" in loop_entry:
-                goals = [loop_entry["goal"]]
-            else:
-                raise ValueError("Loop: missing goal(s)", goal_entry)
-            arg_name = loop_entry["arg"] if "arg" in loop_entry else "__loop_arg__"
-
-            if "range" in loop_entry:
-                loop_over = range(loop_entry["range"])
-            elif "values" in loop_entry:
-                loop_over = loop_entry["values"]
-            elif "valuesGoal" in loop_entry:
-                loop_over = self.run(loop_entry["valuesGoal"], scope=scope, **goal_args)
-            elif "valuesArg" in loop_entry:
-                loop_over = goal_args[loop_entry["valuesArg"]]
-            else:
-                raise ValueError("Loop: missing loop over", goal_entry)
-
-            loop_result = self._run_batch_goal_loop(loop_over=loop_over,
-                                                    goals=goals,
-                                                    goal_args=goal_args,
-                                                    loop_arg_name=arg_name,
-                                                    scope=scope)
-            goal_args["__previous_result__"] = loop_result
-
-            if "resultArg" in loop_entry:
-                goal_args[loop_entry["resultArg"]] = loop_result
-
-            if "resultGoal" in loop_entry:
-                if "resultGoalParam" not in loop_entry:
-                    raise ValueError("resultGoal requires resultGoalParam", loop_entry)
-
-                return self.run(loop_entry["resultGoal"],
-                                scope=scope,
-                                **{**goal_args, loop_entry["resultGoalParam"]: loop_result})
-            else:
-                return loop_result
-        elif "goal" in goal_entry:
-            return self.run(goal_entry["goal"], scope=scope, **goal_args)
-        else:
-            raise ValueError("Invalid batch Goal", goal_entry)
-
-    def _run_batch_goal_loop(self, loop_over, goals: list, goal_args: dict, loop_arg_name: str, scope: Optional[str] = None):
-        scope = self.get_scope(scope)
-
-        if loop_over is None:
-            return
-        if not pu.iterable(loop_over):
-            loop_over = [loop_over]
-
-        loop_results = []
-        for arg in loop_over:
-            for loop_goal_entry in goals:
-                loop_result = self._run_batch_goal(goal_entry=loop_goal_entry,
-                                                   goal_args={**goal_args, loop_arg_name: arg},
-                                                   scope=scope)
-                loop_results.append(loop_result)
-
-        return loop_results
+        if "run" in batch:
+            run = batch["run"]
+            return self.run(DynamicGoal(name=":BatchGoal:",
+                                        goal_def=run,
+                                        goal_manager=self),
+                            fun_kwargs=run_kwargs,
+                            scope=scope)
 
     def all_goals(self):
         return {scope: goals.keys() for scope, goals in self.lib.items()}
@@ -693,9 +891,21 @@ class GoalManager:
                             default=default_goal,
                             help="Which goal to execute (default: %(default)s). Options: " +
                                  ', '.join(self.goal_names(scope=scope)))
-        parser.add_argument("--goal_json",
+        parser.add_argument('--inspect',
+                            dest='inspect',
+                            action='store_true',
+                            help='Inspect Goal')
+        parser.set_defaults(inspect=False)
+
+        parser.add_argument('--debug',
+                            dest='debug',
+                            action='store_true',
+                            help='Inspect Goal')
+        parser.set_defaults(debug=False)
+
+        parser.add_argument("--goal_config",
                             type=str,
-                            help="Goal JSON file, command line params will override")
+                            help="Goal JSON/Yaml file, command line params will override")
         self._create_arg_parser_params(arg_parser=parser,
                                        default_goal=default_goal,
                                        all_args=all_args,
@@ -760,8 +970,8 @@ class GoalManager:
                                                 scope=scope,
                                                 custom_inputs=custom_inputs,
                                                 **kwargs)
-        args = pu.parse_unknown_args(arg_parser)
-        args = pu.remove_na_from_dict(args)
+        args = pyu.parse_unknown_args(arg_parser)
+        args = pyu.remove_na_from_dict(args)
         # for goal_name in goal_names:
         #     self._create_arg_parser_params(arg_parser=arg_parser,
         #                                    default_goal=goal_name,
@@ -770,16 +980,23 @@ class GoalManager:
         #                                    enforced_required=True)
         # args = arg_parser.parse_args()
 
-        if "goal_json" in args:
-            goal_json = args["goal_json"]
-            del args['goal_json']
-            result = self.run_batch(path=goal_json, scope=scope, run_kwargs={**kwargs, **args})
+        result = None
+        if "debug" in args:
+            if args["debug"]:
+                self.debug(args["debug"])
+        if "goal_config" in args:
+            goal_config = args["goal_config"]
+            del args['goal_config']
+            result = self.run_batch(path=goal_config, scope=scope, run_kwargs={**kwargs, **args})
         elif "goal" in args:
             goal_name = args["goal"]
-            goal_names = goal_name.split(" ")
+            # goal_names = goal_name.split(" ")
             del args['goal']
 
-            result = self.run(goal_names, scope=scope, **{**kwargs, **args})
+            if args["inspect"]:
+                print(*(next(iter(self.find(goals=[goal_name], scope=scope).values())).referenced()))
+            else:
+                result = self.run(goal_name, scope=scope, **{**kwargs, **args})
         else:
             raise ValueError("no goal or json specified")
 
@@ -787,6 +1004,15 @@ class GoalManager:
             print(result)
 
         return result
+
+    def log(self, context, action, *args):
+        if self.print_logs:
+            pyu.print_bordered(*(context.level * '-'),
+                               f"Goal: {context.goal}",
+                               *((context.scope, "::") if context.scope is not None else ()),
+                               action,
+                               f"Time: {time.time() - context.start_time}",
+                               *args)
 
     def debug(self, on: bool = True) -> None:
         self.print_logs = on

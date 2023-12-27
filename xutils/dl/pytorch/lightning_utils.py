@@ -2,7 +2,8 @@ import os
 import time
 from typing import Tuple, Any, Optional, Literal, Union, Callable
 
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateFinder, BatchSizeFinder, \
+    TQDMProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
 from torchmetrics import Precision, Recall, Accuracy, MetricTracker
 from torchmetrics.functional import stat_scores
@@ -17,7 +18,7 @@ from typing.io import IO
 
 from xutils.core.python_utils import getattr_ignore_case
 import xutils.data.data_utils as du
-import xutils.dl.pytorch.utils as pyu
+import xutils.dl.pytorch.utils as toru
 import xutils.core.file_utils as fu
 # import xutils.data.plot_utils as pltu
 
@@ -35,34 +36,19 @@ class WrapperModule(pl.LightningModule):
                  batch_size: int = 10):  # , num_classes=None):
         super(WrapperModule, self).__init__()
         self.model: pl.LightningModule = wrapped
-        # self.model.to(self.device) # todo: see why not gpu
-        self.model.cuda()
+        self.model.to(toru.get_device())
 
         self.learning_rate = learning_rate
         self.save_hyperparameters('learning_rate', 'loss_fn', 'batch_size')
 
-        # https://sparrow.dev/cross-entropy-loss-in-pytorch/
-        if loss_fn is None:
-            # todo: auto choose based on type flag
-            self.loss_fn = F.cross_entropy
-        elif loss_fn == "categorical_cross_entropy":
-            # loss_tracker = nn.NLLLoss()
-            # self.loss_fn = lambda y_hat, y: loss_tracker(torch.log(y_hat), y)
-            self.loss_fn = lambda y_hat, y: (-(y_hat + 1e-5).log() * y).sum(dim=1).mean()
-        elif isinstance(loss_fn, str):
-            self.loss_fn = getattr_ignore_case(F, loss_fn)
-            if self.loss_fn is None:
-                self.loss_fn = getattr_ignore_case(nn, loss_fn)()
-        else:
-            self.loss_fn = loss_fn
+        self.loss_fn = toru.parse_loss_fn(loss_fn)
 
         # if num_classes is not None:
         #     self.precision = Precision(num_classes)
         #     self.recall = Recall(num_classes)
         train_type = output_type if output_type != 'onehot' else 'multiclass'
         self.accuracy = Accuracy(task=train_type)
-
-        self.train_loss_tracker = EMATracker(alpha=0.02)
+        # self.train_loss_tracker = EMATracker(alpha=0.02)
 
     def forward(self, x):
         return self.model(x)
@@ -75,16 +61,16 @@ class WrapperModule(pl.LightningModule):
         y_hat = self.model(x)
         loss = self.loss(y_hat, y)
 
-        self.log("loss", loss)
+        self.log("loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("log", batch_idx % self.trainer.accumulate_grad_batches == 0)
         return loss
 
-    def _should_log(self, flag):
-        if (self.trainer.global_step + 1) % self.trainer.log_every_n_steps == 0:
-            if isinstance(flag, list):
-                return flag[0]
-            return flag
-        return False
+    # def _should_log(self, flag):
+    #     if (self.trainer.global_step + 1) % self.trainer.log_every_n_steps == 0:
+    #         if isinstance(flag, list):
+    #             return flag[0]
+    #         return flag
+    #     return False
 
     # def training_step_end(self, outputs):
     #     # Aggregate the losses from all GPUs
@@ -118,7 +104,12 @@ class WrapperModule(pl.LightningModule):
         # self.log("val_acc", self.accuracy(y_hat, y.int()))
         # todo: custom tf onehot handling
         # todo: data type handling
-        self.log("val_acc", self.accuracy(y_hat, torch.argmax(y.squeeze(), dim=1) if y.shape[1] > 1 else y.int()))
+        self.log("val_acc",
+                 self.accuracy(y_hat,
+                               torch.argmax(y.squeeze(), dim=1) if y.shape[1] > 1 else y.int()),
+                 on_step=False,
+                 on_epoch=True,
+                 prog_bar=True)
 
         # if self.recall:
         #     metrics["recall"] = self.recall(y_hat, y)
@@ -296,11 +287,13 @@ class PandasDataModule(DatasetDataModule):
                                               self.test_df[self.targets_col].values)
 
 
-def load_model(model_or_class: pl.LightningModule, path: Union[str, IO], model_kwargs, wrap=False) -> pl.LightningModule:
+def load_model(model: Union[pl.LightningModule, Callable[[Any], pl.LightningModule]], path: Union[str, IO], model_kwargs, wrap=False) -> pl.LightningModule:
     if wrap:
-        model_or_class = wrap_model(model_or_class)
-    return model_or_class.load_from_checkpoint(checkpoint_path=path,
-                                               kwargs=model_kwargs)
+        model = wrap_model(model)
+    model = model.load_from_checkpoint(checkpoint_path=path,
+                                       kwargs=model_kwargs)
+    model.to(toru.get_device())
+    return model
 
 
 def wrap_model(base_model: pl.LightningModule):
@@ -348,32 +341,40 @@ def train_model(model,
     callback_checkpoint = ModelCheckpoint(monitor='val_loss',
                                           dirpath=temp_checkpoint_path,
                                           filename="checkpoint-{val_acc:.2f}-{val_loss:.2f}-{epoch:02d}-at-{time_stamp}")
+    # callback_checkpoint.FILE_EXTENSION = ".pth"
+    
     trainer = pl.Trainer(
-        accelerator=pyu.get_device_type(),
-        devices=-1,
+        # accelerator=pyu.get_device_type(),
+        # precision="16",
+        # devices=-1,
         callbacks=[
             # EarlyStopping(
             #     monitor='val_loss',
             #     patience=25
             # ),
+            TQDMProgressBar(),
+            # BatchSizeFinder(),
+            # LearningRateFinder(),
             InputMonitor(),
             # CheckBatchGradient(),  #todo: see why broken
             callback_checkpoint
         ],
-        # log_every_n_steps=1,
-        auto_lr_find=True,
-        auto_scale_batch_size="power",
+        enable_progress_bar=True,
+        # auto_lr_find=True,
+        # auto_scale_batch_size="power",
         max_epochs=epochs,
         logger=TensorBoardLogger(os.path.join(checkpoint_path, 'tensorboard')),
 
         benchmark=not deterministic,
         deterministic=deterministic)
-    # trainer.tune(lightning_model)
+
+    # torch._dynamo.config.suppress_errors = True
+    # lightning_model = torch.compile(lightning_model)
     trainer.fit(lightning_model, datamodule=dataset)
 
     print("Best Model", callback_checkpoint.best_model_path)
 
-    model = load_model(model_or_class=lightning_model_fn,
+    model = load_model(model=lightning_model_fn,
                        path=callback_checkpoint.best_model_path,
                        model_kwargs=train_kwargs)
 
@@ -389,27 +390,12 @@ def train_model(model,
 
 def test_model(model, x=None, y=None, trainer=None, data=None):
     if trainer is None:
-        trainer = pl.Trainer(accelerator=pyu.get_device_type(),
-                             devices=-1)
+        trainer = pl.Trainer()
 
     if data is None:
         DatasetDataModule(test_dataset=NumpyXYDataset(x, y))
 
     return trainer.test(model, datamodule=data, verbose=True)
-
-
-def run_model(model, x=None, add_batch_dimension=False):
-    if isinstance(x, du.DataManager):
-        x = x.x
-
-    if not isinstance(x, torch.Tensor):
-        x = torch.from_numpy(x).float()
-    if add_batch_dimension:
-        x = x.unsqueeze(0)
-
-    model.eval()
-    with torch.no_grad():
-        return model(x).numpy()
 
 
 def create_data_module(x_train=None, y_train=None,

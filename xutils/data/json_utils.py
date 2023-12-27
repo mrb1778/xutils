@@ -1,8 +1,12 @@
 import inspect
 import json
-from typing import List, Iterable
+from typing import List
 import numpy as np
 import pandas as pd
+
+
+def is_json(extension: str) -> bool:
+    return extension == ".json"
 
 
 def read(json_string):

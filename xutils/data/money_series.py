@@ -77,7 +77,7 @@ class PandasMoneySeries(PandasSeries):
         splits = self.get_value(column=self.split_column)
         for asset, split_multiplier in splits:
             split_multiplier = math.floor(split_multiplier)
-            if split_multiplier != 1:
+            if split_multiplier not in (0, 1):
                 quantity_owned = self.asset_quantity(asset)
                 if quantity_owned > 0:
                     total_owned = quantity_owned * split_multiplier
@@ -151,18 +151,31 @@ class PandasMoneySeries(PandasSeries):
         else:
             return 100 * all_amounts[name] / total_amount
 
-    def trade(self, name, quantity, **kwargs):
+    def trade(self, name: str = None, quantity: int = 1, all_or_none: bool = False, **kwargs):
+        if name is None:
+            name = next(iter(self._prepared_data.keys()))
+
         if quantity == 0:
             return False
 
         if self.asset_quantity(name) + quantity < 0:
-            return False
+            if all_or_none:
+                return False
+            else:
+                quantity = self.asset_quantity(name)
 
         price = self.price_of(name)
+        if price is None:
+            return False
+
         total = quantity * price
 
-        if self.balance - total < 0:
-            return False
+        if quantity > 0 and self.balance - total < 0.0:
+            if all_or_none:
+                return False
+            else:
+                quantity = self.balance // price
+                total = quantity * price
 
         # print("trade: ", name, quantity, price)
         self.balance = self.balance - total
@@ -221,6 +234,18 @@ class PandasMoneySeries(PandasSeries):
                 self.trade(asset, -quantity)
 
     @property
+    def data_summary(self):
+        data_len = max(len(entry) for entry in self._prepared_data.values())
+        start_price = sum(entry.iloc[0][self.price_column] for entry in self._prepared_data.values())
+        end_price = sum(entry.iloc[-1][self.price_column] for entry in self._prepared_data.values())
+        return {
+            "entries": data_len,
+            "start_price": start_price,
+            "end_price": end_price,
+            "price_delta_%": 100 * (end_price - start_price) / start_price
+        }
+
+    @property
     def summary(self):
         return {
             "name": self.name,
@@ -229,10 +254,12 @@ class PandasMoneySeries(PandasSeries):
             "initial_balance": self.initial_balance,
             "balance_pre_cash_out": self.balance_pre_cash_out,
             "balance_delta": self.balance - self.initial_balance,
-            "dividends": self.dividends,
             "transactions": len(self.history),
             "buys": sum([h["type"] == "buy" for h in self.history]),
-            "sells": sum([h["type"] == "sell" for h in self.history])
+            "sells": sum([h["type"] == "sell" for h in self.history]),
+            "splits": sum([h["type"] == "split" for h in self.history]),
+            "dividends": self.dividends,
+            **self.data_summary
         }
 
     def finish(self):

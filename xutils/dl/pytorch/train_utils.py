@@ -4,7 +4,7 @@ from sklearn.metrics import classification_report, confusion_matrix, roc_auc_sco
 from torch import nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
-from xutils.dl.pytorch.utils import get_device
+import xutils.dl.pytorch.utils as toru
 
 
 def compute_metrics(model,
@@ -15,7 +15,7 @@ def compute_metrics(model,
                     negative_label="Negative",
                     verbose=True):
     if device is None:
-        device = get_device()
+        device = toru.get_device()
 
     model.eval()
 
@@ -168,7 +168,7 @@ def train(model, optimizer, train_loader, val_loader, log_dir, early_stopper, le
     best_val_score = 0
     writer = SummaryWriter(log_dir)
     if device is None:
-        device = get_device()
+        device = toru.get_device()
 
     criterion = nn.CrossEntropyLoss()
 

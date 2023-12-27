@@ -1,5 +1,5 @@
 import os
-from typing import Callable
+from typing import Callable, List, Iterable, Union, Dict
 
 import pandas as pd
 import numpy as np
@@ -165,7 +165,7 @@ def get_column_index(df: pd.DataFrame, column):
 
 def print_all(df: pd.DataFrame):
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, "display.width", None):
-        print(df)
+        print(df.to_markdown(tablefmt='psql'))
     return df
 
 
@@ -250,9 +250,24 @@ def add_calc_column(df, column_name, calc_fn, cleanup=False):
     return df
 
 
-def concat_unique(dfs):
+def concat_unique(dfs:  Iterable[pd.DataFrame]):
     df = pd.concat(dfs, axis=1)
     return df.loc[:, ~df.columns.duplicated()]
+
+
+def concat_dicts(dfs:  Iterable[Dict]):
+    return pd.DataFrame.from_records(dfs)
+
+
+def merge_all(dfs: Iterable[pd.DataFrame], on : str = None, how='outer'):
+    merged = None
+    for df in dfs:
+        if merged is None:
+            merged = df
+        else:
+            merged = merged.merge(df, on=on, how=how)
+
+    return merged
 
 
 def read_enrich_write(source_data_path: str,
@@ -310,3 +325,7 @@ def scale_min_max(df, min_max):
         df_scaled[column] = (df_scaled[column] - col_min) / (col_max - col_min)
 
     return df_scaled
+
+
+def invert_to_dict(df: pd.DataFrame) -> dict:
+    return df.to_dict(orient="records")

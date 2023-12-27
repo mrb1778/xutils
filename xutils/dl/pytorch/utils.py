@@ -1,10 +1,17 @@
 import io
+from typing import List, Optional
 
 import requests
+
+import numpy as np
+
 import torch
 from torch import nn as nn
+import torch.nn.functional as F
 from torch.utils.mobile_optimizer import optimize_for_mobile
 
+import xutils.core.python_utils as pyu
+import xutils.data.data_utils as du
 
 def has_gpu():
     return torch.cuda.is_available()
@@ -112,3 +119,72 @@ def load_model(path: str, device: torch.device = None) -> nn.Module:
     else:
         with open(path, 'rb') as f:
             return torch.load(f, map_location=device)
+
+
+def parse_loss_fn(loss_fn):
+    if loss_fn is None:
+        # todo: auto choose based on type flag
+        return F.cross_entropy
+    elif loss_fn == "categorical_cross_entropy":
+        # https://sparrow.dev/cross-entropy-loss-in-pytorch/
+        return lambda y_hat, y: (-(y_hat + 1e-5).log() * y).sum(dim=1).mean()
+    elif isinstance(loss_fn, str):
+        return pyu.getattr_ignore_case(F, loss_fn) or pyu.getattr_ignore_case(nn, loss_fn)()
+    else:
+        return loss_fn
+
+
+class ToTensorConverter:
+    def can_convert(self, x) -> bool:
+        pass
+
+    def convert(self, x) -> Optional[torch.Tensor]:
+        pass
+
+
+to_tensor_converters: List[ToTensorConverter] = []
+
+
+def to_tensor_converter(converter):
+    instance = converter()
+    to_tensor_converters.append(instance)
+    return instance
+
+
+@to_tensor_converter
+class NumpyDataManagerToTensorConverter(ToTensorConverter):
+    def can_convert(self, x) -> bool:
+        return isinstance(x, du.DataManager) and x.x is not None and isinstance(x.x, np.ndarray)
+
+    def convert(self, x: du.DataManager) -> torch.Tensor:
+        return torch.from_numpy(x.x).float()
+
+
+class NumpyArrayToTensorConverter(ToTensorConverter):
+    def can_convert(self, x) -> bool:
+        return isinstance(x, np.ndarray)
+
+    def convert(self, x) -> torch.Tensor:
+        return torch.from_numpy(x).float()
+
+
+def convert_to_tensor(x):
+    if isinstance(x, torch.Tensor):
+        return x
+    else:
+        for converter in reversed(to_tensor_converters):
+            if converter.can_convert(x):
+                return converter.convert(x)
+    raise RuntimeError("No converter found for ", x)
+
+
+def run_model(model, x=None, add_batch_dimension=False) -> torch.Tensor:
+    x = convert_to_tensor(x)
+    x = x.to(get_device())
+
+    if add_batch_dimension:
+        x = x.unsqueeze(0)
+
+    model.eval()
+    with torch.no_grad():
+        return model(x).cpu()

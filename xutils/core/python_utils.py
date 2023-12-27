@@ -1,13 +1,15 @@
+import importlib
+import itertools
+from argparse import ArgumentParser
+from typing import List
 import argparse
 import collections
 import gc
 import os
 import sys
 import inspect
-from types import FunctionType
-from typing import Iterable
-
-import six
+from typing import Iterable, Dict, Any, Callable, get_type_hints, Optional, Union
+from tabulate import tabulate
 
 
 class DisablePrintStatements:
@@ -22,12 +24,15 @@ class DisablePrintStatements:
         sys.stdout = self._original_stdout
 
 
-def get_functions(module, private=False, as_dict=False):
-    if isinstance(module, str):
-        module = __import__(module, fromlist=[''])
+def get_functions(obj=None, module=None, private=False, as_dict=False):
+    if obj is None and module is not None:
+        raise ValueError("Need obj or module")
+    if obj is None and module is not None and isinstance(module, str):
+        obj = importlib.import_module(module)
+    elif obj is None and module is not None:
+        obj = module
 
-    functions = inspect.getmembers(module, inspect.isfunction)
-
+    functions = inspect.getmembers(obj, inspect.isfunction)
     if not private:
         functions = [(key, value)
                      for (key, value) in functions
@@ -35,47 +40,92 @@ def get_functions(module, private=False, as_dict=False):
     if as_dict:
         return {key: value
                 for (key, value) in functions}
+    else:
+        return functions
 
 
-def params_has_kwargs(fun: FunctionType) -> bool:
-    sig = inspect.signature(fun)
-    for p in sig.parameters.values():
-        return p.kind == inspect.Parameter.VAR_KEYWORD
+def params_has_kwargs(fun: Callable) -> bool:
+    for p in params_sig(fun):
+        if p.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+    return False
 
 
-def param_names(fun: FunctionType, required=True, optional=True) -> list:
-    sig = inspect.signature(fun)
+def param_names(fun: Callable, required=True, optional=True) -> list:
     return [
         p.name
-        for p in sig.parameters.values()
-        if (required and p.default == inspect.Parameter.empty)
-           or (optional and p.kind != inspect.Parameter.empty)
+        for p in params_sig(fun)
+        if (required and p.default == inspect.Parameter.empty) or
+           (optional and p.kind != inspect.Parameter.empty)
     ]
 
 
-def param_defaults(fun: FunctionType, required=True, optional=True) -> dict:
-    sig = inspect.signature(fun)
+def param_defaults(fun: Callable, required=True, optional=True) -> dict:
     return {
         p.name: p.default if p.default != inspect.Parameter.empty else None
-        for p in sig.parameters.values()
-        if (required and p.default == inspect.Parameter.empty)
-           or (optional and p.kind != inspect.Parameter.empty)
+        for p in params_sig(fun)
+        if (required and p.default == inspect.Parameter.empty) or
+           (optional and p.kind != inspect.Parameter.empty)
     }
 
 
-def params(fun: FunctionType, required=True, optional=True) -> dict:
-    sig = inspect.signature(fun)
+def params_sig(fun: Callable):
+    return inspect.signature(fun).parameters.values()
+
+
+def params(fun: Callable, required=True, optional=True) -> Dict[str, Dict[str, Any]]:
     return {
         p.name: {
             "name": p.name,
             "default": p.default if p.default != inspect.Parameter.empty else None,
             "required": p.default == inspect.Parameter.empty,
-            "type": p.annotation if p.annotation != inspect.Parameter.empty else None
+            "type": p.annotation if p.annotation != inspect.Parameter.empty else None,
+            "kwargs": p.kind == inspect.Parameter.VAR_KEYWORD
         }
-        for p in sig.parameters.values()
-        if (required and p.default == inspect.Parameter.empty)
-           or (optional and p.kind != inspect.Parameter.empty)
+        for p in params_sig(fun)
+        if (required and p.default == inspect.Parameter.empty) or
+           (optional and p.kind != inspect.Parameter.empty)
     }
+
+
+def return_type(fun: Callable) -> Optional[Union[type, str]]:
+    if not callable(fun):
+        return None
+
+    hints = get_type_hints(fun)
+    return hints.get("return")
+
+
+def execute(fun: str,
+            package: Optional[str] = None,
+            obj: Optional[Any] = None,
+            args: Optional[List] = None,
+            kwargs: Optional[Dict] = None) -> Any:
+    if obj is not None:
+        if not hasattr(obj, fun):
+            raise ValueError(
+                f"Object: '{obj}':{type(obj)} does not have function: '{fun}' options: {get_functions(obj)}")
+        fun_exec = getattr(obj, fun)
+    elif package is not None:
+        module = importlib.import_module(package)
+        if not hasattr(module, fun):
+            raise ValueError(
+                f"Module: '{module}' does not have function: '{fun}' options: {get_functions(module=module)}")
+        fun_exec = getattr(module, fun)
+    else:
+        if fun not in globals():
+            raise ValueError(f"{fun} is not a built in function")
+        fun_exec = globals()["__builtins__"][fun]
+
+    if args is None:
+        if kwargs is None:
+            return fun_exec()
+        else:
+            return fun_exec(**kwargs)
+    elif kwargs is None:
+        return fun_exec(*args)
+    else:
+        return fun_exec(*args, **kwargs)
 
 
 def remove_keys(items: dict, keys: Iterable[str]):
@@ -102,33 +152,35 @@ def getattr_ignore_case(obj, attr: str):
 
 
 def print_dicts(dicts, sort_on=None):
-    import tabulate
-
     if sort_on is not None:
         dicts = sorted(dicts, key=lambda entry: entry[sort_on], reverse=True)
     header = dicts[0].keys()
     rows = [x.values() for x in dicts]
-    output = tabulate.tabulate(rows, header)
+    output = tabulate(rows, header)
     print(output)
     return output
 
 
-def print_dict(d: dict, key_header="Key", value_header="Value", ignore_none=False):
-    import tabulate
+def bordered(*text):
+    return tabulate([text], tablefmt='fancy_grid')
 
-    output = tabulate.tabulate(d.items(), [key_header, value_header], tablefmt='fancy_grid')
+
+def print_bordered(*text):
+    print(bordered(*text))
+
+
+def print_dict(d: dict, key_header="Key", value_header="Value"):
+    output = tabulate(d.items(), [key_header, value_header], tablefmt='fancy_grid')
     print(output)
     return output
 
 
 def print_list_dict(data: list, keys=None):
-    import tabulate
-
     if keys is None:
         keys = data[0].keys()
 
-    output = tabulate.tabulate([list(map(x.get, keys)) for x in data], keys)
-    print(output)
+    output = tabulate([list(map(x.get, keys)) for x in data], keys)
+    print(bordered(output))
     return output
 
 
@@ -212,7 +264,16 @@ class ParseKwargs(argparse.Action):
             getattr(namespace, self.dest)[key] = value
 
 
-def add_kwargs_arg(parser, arg_name="args"):
+class ParseKwargs:
+    def __call__(self, parser, namespace, values, option_string=None):
+        kwargs = {}
+        for value in values:
+            key, value = value.split('=')
+            kwargs[key] = value
+        setattr(namespace, 'kwargs', kwargs)
+
+
+def add_kwargs_arg(parser: ArgumentParser, arg_name: str = "args") -> None:
     parser.add_argument(arg_name, nargs='*', action=ParseKwargs)
 
 
@@ -399,4 +460,52 @@ def free_memory():
 
 
 def iterable(arg):
+    import six
     return isinstance(arg, collections.Iterable) and not isinstance(arg, six.string_types)
+
+
+class DictAccess(dict):
+    def __getattr__(self, name):
+        if name in self:
+            return self[name]
+        else:
+            raise AttributeError("No such attribute: " + name)
+
+    def __setattr__(self, name, value):
+        self[name] = value
+
+    def __delattr__(self, name):
+        if name in self:
+            del self[name]
+        else:
+            raise AttributeError("No such attribute: " + name)
+
+
+def permute_transpose(data: Dict[Any, Iterable[Any]]) -> List[Dict]:
+    keys, values = zip(*data.items())
+    return [dict(zip(keys, v)) for v in itertools.product(*values)]
+
+
+def curry_kwargs(fun: Callable, **kwargs):
+    return lambda **extra_kwargs: fun(
+        **{**kwargs, **extra_kwargs}
+    )
+
+
+def curry_args_to_kwargs(fun: Callable, **kwargs):
+    def args_kwargs_fun(*args, **extra_kwargs):
+        all_params = list(params(fun, required=True, optional=False).keys())
+        args_kwargs = {all_params[i]: p for i, p in enumerate(args)}
+        return fun(**{**kwargs, **extra_kwargs, **args_kwargs})
+
+    return args_kwargs_fun
+
+
+def walk_dict(dic, visitor: Callable, path=()):
+    to_process = [(dic, path)]
+    while to_process:
+        dict_node, path_node = to_process.pop(0)
+        for key, value in dict_node.items():
+            visitor(dict_node, key, value)
+            if isinstance(value, dict):
+                to_process.append((value, path_node + (key,)))

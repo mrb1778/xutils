@@ -1,16 +1,17 @@
 import re
 
+
 class DecoratorException(Exception):
     headline = "Flow failed"
 
     def __init__(self, msg="", lineno=None):
         self.message = msg
         self.line_no = lineno
-        super(DecoratorException, self).__init__()
+        super().__init__()
 
     def __str__(self):
         prefix = f"line {self.line_no:d}: " if self.line_no else ""
-        return "%s%s" % (prefix, self.message)
+        return f"{prefix}{self.message}"
 
 
 class InvalidDecoratorAttribute(DecoratorException):

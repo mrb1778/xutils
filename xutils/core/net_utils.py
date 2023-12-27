@@ -1,3 +1,4 @@
+import requests
 from urllib import request
 
 import xutils.core.file_utils as fu

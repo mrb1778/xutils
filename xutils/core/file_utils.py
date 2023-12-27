@@ -42,21 +42,27 @@ def list_paths(path: str,
     return paths
 
 
-def get_file_name(path: str, strip_extension: bool = False) -> str:
-    name = Path(path).name
+def file_name(path: str, strip_extension: bool = False) -> str:
+    path = Path(path)
     if strip_extension:
-        return name.split(".")[0]
+        return path.stem
     else:
-        return name
+        return path.name
+
+
+def extension(path: str) -> str:
+    return Path(path).suffix
 
 
 def exists(path: str) -> bool:
-    return os.path.exists(path)
+    return Path(path).exists()
 
 
-def ensure_exists(path: str) -> None:
-    if not os.path.exists(path):
-        os.makedirs(path)
+def ensure_exists(path: str) -> bool:
+    if not Path(path).exists():
+        Path(path).mkdir(parents=True, exist_ok=True)
+        return True
+    return False
 
 
 def delete(path: str) -> None:
@@ -86,14 +92,13 @@ def move(path: str, to: str):
 
 def copy(path: str, to: str, with_prefix: bool = False):
     ensure_exists(to)
-
     path = Path(path)
     if with_prefix:
         for p in path.parent.glob(f"{path.name}*"):
             if p.is_file():
-                copy(p, to, with_prefix=False)
+                copy(str(p), to, with_prefix=False)
     else:
-        return shutil.copy(str(path), os.path.join(Path(to), path.name))
+        return shutil.copy2(str(path), to)
 
 
 def download_and_unzip(url: str) -> None:
