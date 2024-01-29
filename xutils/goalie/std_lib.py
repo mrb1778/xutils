@@ -42,8 +42,21 @@ def init_lib(goal: GoalManager, scope: str):
         return pyu.execute(fun=fun, package=package, obj=obj, args=args, kwargs=kwargs)
 
     @goal(name="get", scope=scope)
-    def _get(obj, what: str):
-        return getattr(obj, what)
+    def _get(obj, what: Union[str, Iterable[str]]):
+        if isinstance(what, str):
+            return getattr(obj, what)
+        else:
+            return [getattr(obj, what_item) for what_item in what]
+
+    @goal(name="set", scope=scope)
+    def _set(obj: Any, what: str, value: Any) -> Any:
+        obj[what] = value
+        # setattr(obj, what, value)
+        return obj
+
+    @goal(name="index", scope=scope)
+    def _index(obj, what: Any):
+        return obj[what]
 
     @goal(name="if", scope=scope)
     def _if(test: Union[bool, Callable],
@@ -102,12 +115,23 @@ def init_lib(goal: GoalManager, scope: str):
         return x - y
 
     @goal(name="with", scope=scope)
-    def _with(do: Iterable[Callable], kwargs: Dict):
-        print("std_lib.py::_with:106:", kwargs, ":(kwargs)", do)
-        last_result = None
-        for do_item in do:
-            last_result = do_item(**kwargs)
-        return last_result
+    def _with(do: Union[Callable, Dict[str, Callable], Iterable[Callable]], kwargs: Dict[str, Any]):
+        if isinstance(do, Callable):
+            return do(**kwargs)
+        elif isinstance(do, Dict):
+            result = None
+            kwargs = kwargs.copy()
+            for name, do_item in do.items():
+                result = do_item(**kwargs)
+                kwargs[name] = result
+            return result
+        elif isinstance(do, Iterable):
+            last_result = None
+            for do_item in do:
+                last_result = do_item(**kwargs)
+            return last_result
+        else:
+            raise ValueError(f"Invalid do {do}, must be Callable, Dict[str, Callable], or Iterable[Callable]")
 
     @goal(scope=scope)
     def collect(over: Union[Iterable[Any], Dict[str, Iterable[Any]]],
@@ -139,7 +163,6 @@ def init_lib(goal: GoalManager, scope: str):
         if isinstance(over, Dict):
             merged_args = pyu.permute_transpose(over)
             for fun_kwargs in merged_args:
-                print("std_lib.py::loop:136:",  fun_kwargs, ":(fun_kwargs)")
                 do(**fun_kwargs)
         else:
             for e in over:
@@ -151,7 +174,6 @@ def init_lib(goal: GoalManager, scope: str):
     # @goal(scope=scope)
     # def query(from_: Dict[str, Any], select: Optional[Iterable[Any]] = None):
     #     return_val = {key, }
-
 
     # @goal(scope=scope)
     # def nested_loop(over: Dict[str, List[Any]], body: Callable) -> List:

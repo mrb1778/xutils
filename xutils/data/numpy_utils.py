@@ -204,6 +204,7 @@ def one_hot_reverse(x):
 
 
 def one_hot_confidence(x):
+    # todo: verify
     return np.absolute(np.amax(x, axis=1))
 
 
@@ -212,6 +213,4 @@ def split_where(arr, where):
 
 
 def binary_confidence(x):
-    split_x = split_where(x, where=x < 0.5)
-    return (((np.sum(1 - split_x[0]) + np.sum(split_x[1])) / len(x)) - 0.5) * 2
-
+    return 2 * (np.absolute(x - 0.5))
