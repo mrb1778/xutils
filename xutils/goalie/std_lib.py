@@ -4,6 +4,7 @@ import itertools
 import os.path
 from typing import Any, Callable, List, Iterable, Dict, Union, Optional
 
+import numpy as np
 import pandas as pd
 
 import xutils.core.python_utils as pyu
@@ -21,13 +22,14 @@ def init_lib(goal: GoalManager, scope: str):
         return value
 
     @goal(name="print", scope=scope)
-    def _print(what: str = "hello") -> None:
+    def _print(what: str = "hello") -> Any:
         if isinstance(what, pd.DataFrame):
-            pu.print_all(what)
+            return pu.print_all(what)
         elif isinstance(what, Dict):
-            pyu.print_dict(what)
+            return pyu.print_dict(what)
         else:
             print(what)
+            return what
 
     @goal(name="range", scope=scope)
     def _range(start: int = 0, stop: int = 10) -> range:
@@ -99,23 +101,28 @@ def init_lib(goal: GoalManager, scope: str):
         return x or y
 
     @goal(name="multiply", scope=scope)
-    def _multiply(x: Any, y: Any) -> Any:
+    def multiply(x: Any, y: Any) -> Any:
         return x * y
 
     @goal(name="divide", scope=scope)
-    def _divide(x: Any, y: Any) -> Any:
+    def divide(x: Any, y: Any) -> Any:
         return x / y
 
     @goal(name="add", scope=scope)
-    def _add(x: Any, y: Any) -> Any:
+    def add(x: Any, y: Any) -> Any:
         return x + y
 
     @goal(name="subtract", scope=scope)
-    def _subtract(x: Any, y: Any) -> Any:
+    def subtract(x: Any, y: Any) -> Any:
         return x - y
 
+    @goal(name="avg", scope=scope)
+    def avg(x: Iterable) -> Any:
+        return np.average(np.array(x))
+
     @goal(name="with", scope=scope)
-    def _with(do: Union[Callable, Dict[str, Callable], Iterable[Callable]], kwargs: Dict[str, Any]):
+    def _with(do: Union[Callable, Dict[str, Callable], Iterable[Callable]],
+              kwargs: Dict[str, Any]):
         if isinstance(do, Callable):
             return do(**kwargs)
         elif isinstance(do, Dict):
@@ -134,42 +141,47 @@ def init_lib(goal: GoalManager, scope: str):
             raise ValueError(f"Invalid do {do}, must be Callable, Dict[str, Callable], or Iterable[Callable]")
 
     @goal(scope=scope)
+    def loop(over: Union[Iterable[Any], Dict[str, Iterable[Any]]],
+             do: Union[Callable[[Any], Any], Iterable[Callable]],
+             loop_item: Optional[str] = None) -> Any:
+        if isinstance(do, str):
+            do = goal.get(do)
+        # todo: how to handle non permute
+        result = None
+        if isinstance(over, Dict):
+            merged_args = pyu.permute_transpose(over)
+            for fun_kwargs in merged_args:
+                # do(**fun_kwargs)
+                result = _with(do=do, kwargs=fun_kwargs)
+        else:
+            print("std_lib.py::loop:158")
+            for e in over:
+                if loop_item:
+                    # do(**{loop_item: e})
+                    result = _with(do=do, kwargs={loop_item: e})
+                else:
+                    # do(e)
+                    result = _with(do=do, kwargs=e)
+        return result
+
+    @goal(scope=scope)
     def collect(over: Union[Iterable[Any], Dict[str, Iterable[Any]]],
                 do: Union[Any, Callable[[Any], Any]],
-                loop_item: Optional[str] = None,
-                as_kwargs: bool = False) -> List:
+                loop_item: Optional[str] = None) -> List:
         if isinstance(do, str):
             do = goal.get(do)
         # todo: how to handle non permute
         if isinstance(over, Dict):
             merged_args = pyu.permute_transpose(over)
-            return [do(**fun_kwargs) for fun_kwargs in merged_args]
+            return [_with(do=do, kwargs=fun_kwargs) for fun_kwargs in merged_args]
         else:
-            return [do(**e) if as_kwargs else do(e) if loop_item is None
-                    else do(**{loop_item: e}) for e in over]
+            return [_with(do=do, kwargs=e) if loop_item is None
+                    else _with(do=do, kwargs={loop_item: e}) for e in over]
 
     @goal(scope=scope)
     def transpose(what: Dict[str, Iterable[Any]]) -> List:
         return pyu.permute_transpose(what)
 
-
-    @goal(scope=scope)
-    def loop(over: Union[Iterable[Any], Dict[str, Iterable[Any]]],
-             do: Union[Any, Callable[[Any], Any]],
-             loop_item: Optional[str] = None) -> None:
-        if isinstance(do, str):
-            do = goal.get(do)
-        # todo: how to handle non permute
-        if isinstance(over, Dict):
-            merged_args = pyu.permute_transpose(over)
-            for fun_kwargs in merged_args:
-                do(**fun_kwargs)
-        else:
-            for e in over:
-                if loop_item:
-                    do(**{loop_item: e})
-                else:
-                    do(e)
 
     # @goal(scope=scope)
     # def query(from_: Dict[str, Any], select: Optional[Iterable[Any]] = None):
@@ -190,7 +202,7 @@ def init_lib(goal: GoalManager, scope: str):
         return pu.merge_all(these)
 
     @goal(name="reduce", scope=scope)
-    def _reduce(these: Iterable, how: Optional[Callable] = None, initial: Optional[Any] = None) -> object:
+    def reduce(these: Iterable, how: Optional[Callable] = None, initial: Optional[Any] = None) -> object:
         if how is not None:
             return functools.reduce(how, these, initial)
         else:

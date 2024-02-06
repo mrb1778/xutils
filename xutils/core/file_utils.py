@@ -194,8 +194,8 @@ def add_seekable_to_file(f):
     return f
 
 
-def modified(path: str):
-    return Path(path).stat().st_mtime
+def modified(path: str) -> float:
+    return Path(path).stat().st_mtime if path else 0
 
 
 def modified_days_ago(path: str) -> int:

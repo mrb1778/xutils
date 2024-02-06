@@ -6,12 +6,12 @@ from xutils.goalie import goal
 class GoalieTest(unittest.TestCase):
     def test_basic(self):
         kwargs = {
-            "over": [1, 2, 3],
+            "these": [1, 2, 3],
             "how": lambda x, y: x + y,
             "initial": 0
         }
-        self.assertEqual(goal.lib.std.join(**kwargs), 6)
-        self.assertEqual(goal.run("join", scope="std", **kwargs), 6)
+        self.assertEqual(goal.lib.std.reduce(**kwargs), 6)
+        self.assertEqual(goal.run("reduce", scope="std", **kwargs), 6)
 
         # @goal
         # def loop_body_x(x):

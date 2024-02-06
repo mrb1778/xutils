@@ -4,7 +4,9 @@ import re
 import xutils.data.config_utils as cu
 import xutils.data.json_utils as ju
 
-from .goal import GoalDefinition, GoalManager, GoalParam, GoalRef
+from .goal import GoalDefinition, GoalManager, GoalRef
+from ..expressions.expression_evaluator import DictVariableResolver
+from ..expressions.sexpression import SimpleExpressionEvaluator
 
 
 class DynamicGoal(GoalDefinition):
@@ -17,24 +19,19 @@ class DynamicGoal(GoalDefinition):
                  exec_goal: Union[str, GoalDefinition] = None,
                  goal_def: Union[str, Dict[str, Any]] = None,
                  run_regex: str = r'=(.*)',
-                 run_param_regex: str = r'=\{\{(.*)\}\}',
                  ref_regex: str = r'\&(.*)',
-                 param_regex: str = r'\{\{(.*)\}\}',
                  meta_param: str = '@') -> None:
         super().__init__(name=name, scope=scope, goal_manager=goal_manager)
         self.run_regex: re.Pattern = re.compile(run_regex)
-        self.run_param_regex: re.Pattern = re.compile(run_param_regex)
         self.ref_regex: re.Pattern = re.compile(ref_regex)
-        self.param_regex: re.Pattern = re.compile(param_regex)
         self.meta_param: str = meta_param
-        # self.meta_regex: re.Pattern = re.compile(meta_regex)
         self.exec_goal = exec_goal
         self.goal_def = goal_def
         self._parse_meta()
+
+        self.expression_evaluator = SimpleExpressionEvaluator()
+
         # self._populate_params()
-        # self.params = {'kwargs': GoalParam(name='kwargs', kwargs=True)}
-        # self.params = {}
-        # self.params = {'kwargs': GoalParam(name='kwargs', kwargs=True)}
 
     def _parse_meta(self):
         # todo: values should be eval at run time not construction
@@ -48,49 +45,49 @@ class DynamicGoal(GoalDefinition):
                     # todo: implement
                     pass
 
-    def _populate_params(self):
-        self._parse_params(self.goal_def)
-
-    def _parse_params(self, what):
-        if isinstance(what, GoalDefinition):
-            self.params.update(what.params)
-        elif isinstance(what, str):
-            # run_regex_check = re.fullmatch(self.run_regex, what)
-            # ref_regex_check = re.fullmatch(self.ref_regex, what)
-            run_param_regex_check = re.fullmatch(self.run_param_regex, what)
-            param_regex_check = re.fullmatch(self.param_regex, what)
-
-            # if ref_regex_check is not None:
-            #     self.params.update(self.goal_manager.get(ref_regex_check.group(1)).params)
-            # elif run_regex_check is not None:
-            #     self.params.update(self.goal_manager.get(run_regex_check.group(1)).params)
-            # elif param_regex_check is not None:
-            if run_param_regex_check is not None:
-                self.params[run_param_regex_check.group(1)] = GoalParam(name=run_param_regex_check.group(1),
-                                                                        required=False)
-            if param_regex_check is not None:
-                self.params[param_regex_check.group(1)] = GoalParam(name=param_regex_check.group(1),
-                                                                    required=False)
-        elif isinstance(what, dict):
-            first_key = next(iter(what))
-            run_regex_check = re.fullmatch(self.run_regex, first_key)
-            ref_regex_check = re.fullmatch(self.ref_regex, first_key)
-            if len(what) == 1 and (run_regex_check is not None or ref_regex_check is not None):
-                for goal_name, goal_params in what.items():
-                    for param_name, param_value in goal_params.items():
-                        self._populate_params(param_name)
-                        self._populate_params(param_value)
-                    if run_regex_check is not None:
-                        self.params.update(self.goal_manager.get(run_regex_check.group(1)).params)
-                    else:
-                        self.params.update(self.goal_manager.get(ref_regex_check.group(1)).params)
-            else:
-                for key, value in what.items():
-                    self._populate_params(key)
-                    self._populate_params(value)
-        elif isinstance(what, List):
-            for item in what:
-                self._populate_params(item)
+    # def _populate_params(self):
+    #     self._parse_params(self.goal_def)
+    #
+    # def _parse_params(self, what):
+    #     if isinstance(what, GoalDefinition):
+    #         self.params.update(what.params)
+    #     elif isinstance(what, str):
+    #         # run_regex_check = re.fullmatch(self.run_regex, what)
+    #         # ref_regex_check = re.fullmatch(self.ref_regex, what)
+    #         run_param_regex_check = re.fullmatch(self.run_param_regex, what)
+    #         param_regex_check = re.fullmatch(self.param_regex, what)
+    #
+    #         # if ref_regex_check is not None:
+    #         #     self.params.update(self.goal_manager.get(ref_regex_check.group(1)).params)
+    #         # elif run_regex_check is not None:
+    #         #     self.params.update(self.goal_manager.get(run_regex_check.group(1)).params)
+    #         # elif param_regex_check is not None:
+    #         if run_param_regex_check is not None:
+    #             self.params[run_param_regex_check.group(1)] = GoalParam(name=run_param_regex_check.group(1),
+    #                                                                     required=False)
+    #         if param_regex_check is not None:
+    #             self.params[param_regex_check.group(1)] = GoalParam(name=param_regex_check.group(1),
+    #                                                                 required=False)
+    #     elif isinstance(what, dict):
+    #         first_key = next(iter(what))
+    #         run_regex_check = re.fullmatch(self.run_regex, first_key)
+    #         ref_regex_check = re.fullmatch(self.ref_regex, first_key)
+    #         if len(what) == 1 and (run_regex_check is not None or ref_regex_check is not None):
+    #             for goal_name, goal_params in what.items():
+    #                 for param_name, param_value in goal_params.items():
+    #                     self._populate_params(param_name)
+    #                     self._populate_params(param_value)
+    #                 if run_regex_check is not None:
+    #                     self.params.update(self.goal_manager.get(run_regex_check.group(1)).params)
+    #                 else:
+    #                     self.params.update(self.goal_manager.get(ref_regex_check.group(1)).params)
+    #         else:
+    #             for key, value in what.items():
+    #                 self._populate_params(key)
+    #                 self._populate_params(value)
+    #     elif isinstance(what, List):
+    #         for item in what:
+    #             self._populate_params(item)
 
     def execute(self, possible_kwargs: Dict[str, Any]):
         dynamic_result = self._dynamic_execute(self.goal_def, possible_kwargs)
@@ -111,35 +108,24 @@ class DynamicGoal(GoalDefinition):
             return what
 
     def _dynamic_execute_str(self, what: str, possible_kwargs: Dict[str, Any]):
-        run_regex_check = re.fullmatch(self.run_regex, what)
-        ref_regex_check = re.fullmatch(self.ref_regex, what)
-        param_regex_check = re.fullmatch(self.param_regex, what)
+        what = self.expression_evaluator.eval(what, DictVariableResolver(possible_kwargs))
 
-        if ref_regex_check is not None:
-            # return self.goal_manager.run_later(ref_regex_check.group(1), fun_kwargs=possible_kwargs)
-            return self.goal_manager.run_later(
-                goal=DynamicGoal(name=f"{self.name}:RunLater:{ref_regex_check.group(1)}",
-                                 goal_def=ref_regex_check.group(1),
-                                 goal_manager=self.goal_manager),
-                fun_kwargs=possible_kwargs.copy())
-        elif run_regex_check is not None:
-            run_param_regex_check = re.fullmatch(self.run_param_regex, what)
-            if run_param_regex_check is not None:
-                run_goal = possible_kwargs[run_param_regex_check.group(1)]
-            else:
-                run_goal = run_regex_check.group(1)
-            return self.goal_manager.run(run_goal, fun_kwargs=possible_kwargs)
-        elif param_regex_check is not None:
-            var_name = param_regex_check.group(1)
-            if var_name not in possible_kwargs:
-                return None
-                # todo: only throw for execute, not ref
-                # raise ValueError(
-                #     f"Goal '{self.name}' expected '{var_name}'. Not found in: '[{', '.join(possible_kwargs.keys())}]'")
-            else:
-                return possible_kwargs[var_name]
-        else:
+        if not isinstance(what, str):
             return what
+        else:
+            run_regex_check = re.fullmatch(self.run_regex, what)
+            ref_regex_check = re.fullmatch(self.ref_regex, what)
+            if ref_regex_check is not None:
+                return self.goal_manager.run_later(
+                    goal=DynamicGoal(name=f"{self.name}:RunLater:{ref_regex_check.group(1)}",
+                                     goal_def=f"={ref_regex_check.group(1)}",
+                                     goal_manager=self.goal_manager),
+                    fun_kwargs=possible_kwargs.copy())
+            elif run_regex_check is not None:
+                run_goal = run_regex_check.group(1)
+                return self.goal_manager.run(run_goal, fun_kwargs=possible_kwargs)
+            else:
+                return what
 
     def _dynamic_execute_dict(self, what: Dict, possible_kwargs: Dict[str, Any]):
         dynamic_goal = self._get_dynamic_goal(what)

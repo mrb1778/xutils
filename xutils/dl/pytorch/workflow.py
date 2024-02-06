@@ -1,5 +1,7 @@
 from datetime import datetime
-from typing import Dict, Any, Optional, Callable, Tuple
+from typing import Dict, Any, Optional, Callable, Tuple, Union
+
+import pandas as pd
 
 from mrbuilder.builders import pytorch as mrb
 import xutils.dl.pytorch.utils as toru
@@ -132,14 +134,38 @@ class CheckpointMeta:
 
         return data_manager
 
-    def run(self, df,
-            confidence: bool = False):
+    def run(self,
+            df: Union[pd.DataFrame, Any],
+            confidence: bool = False,
+            performance_confidence: bool = False):
         model = self.load_model()
         data_manager = self.create_datamanager(df)
         results = toru.run_model(model, data_manager)
         results = results.numpy()
         decoded_labels = data_manager.decode_labels(results)
-        if confidence:
-            return decoded_labels, data_manager.label_confidence(results)
+        if confidence or performance_confidence:
+            confidence_res = data_manager.label_confidence(results)
+            if performance_confidence:
+                return decoded_labels * confidence_res
+            return decoded_labels, confidence_res
         else:
             return decoded_labels
+
+    def run_as_df(self,
+                  df: Union[pd.DataFrame, Any],
+                  criteria: str = "F1 score (weighted)") -> pd.DataFrame:
+        performance = self.get_performance(criteria)
+        results, confidence = self.run(df, confidence=True)
+
+        data = df[["timestamp"]].copy()
+        data["predicted"] = results
+        data["performance"] = performance
+        data["confidence"] = confidence
+        return pd.DataFrame(data=data)
+
+
+def run_checkpoint_to_df(checkpoint: str,
+                         df: pd.DataFrame,
+                         criteria: str = "F1 score (weighted)") -> pd.DataFrame:
+    checkpoint_meta = CheckpointMeta(checkpoint)
+    return checkpoint_meta.run_as_df(df=df, criteria=criteria)
