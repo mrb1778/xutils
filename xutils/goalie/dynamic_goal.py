@@ -11,6 +11,7 @@ from ..expressions.sexpression import SimpleExpressionEvaluator
 
 class DynamicGoal(GoalDefinition):
     PARAMS_KEY = "params"
+    PRE_KEY = "pre"
 
     def __init__(self,
                  name: str,
@@ -44,6 +45,8 @@ class DynamicGoal(GoalDefinition):
                 if self.PARAMS_KEY in self.meta_params:
                     # todo: implement
                     pass
+                if self.PRE_KEY in self.meta_params:
+                    self.pre_goals = list(self.goal_manager.find(scope=self.scope, goals=self.meta_params["pre"]).values())
 
     # def _populate_params(self):
     #     self._parse_params(self.goal_def)
