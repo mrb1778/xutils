@@ -25,7 +25,7 @@ class DisablePrintStatements:
 
 
 def get_functions(obj=None, module=None, private=False, as_dict=False):
-    if obj is None and module is not None:
+    if obj is None and module is None:
         raise ValueError("Need obj or module")
     if obj is None and module is not None and isinstance(module, str):
         obj = importlib.import_module(module)
@@ -80,6 +80,8 @@ def params(fun: Callable, required=True, optional=True) -> Dict[str, Dict[str, A
             "default": p.default if p.default != inspect.Parameter.empty else None,
             "required": p.default == inspect.Parameter.empty,
             "type": p.annotation if p.annotation != inspect.Parameter.empty else None,
+            "positional": p.kind == inspect.Parameter.POSITIONAL_ONLY,
+            "args": p.kind == inspect.Parameter.VAR_POSITIONAL,
             "kwargs": p.kind == inspect.Parameter.VAR_KEYWORD
         }
         for p in params_sig(fun)
@@ -96,6 +98,10 @@ def return_type(fun: Callable) -> Optional[Union[type, str]]:
     return hints.get("return")
 
 
+def get_package(package: str):
+    return importlib.import_module(package)
+
+
 def execute(fun: str,
             package: Optional[str] = None,
             obj: Optional[Any] = None,
@@ -107,7 +113,7 @@ def execute(fun: str,
                 f"Object: '{obj}':{type(obj)} does not have function: '{fun}' options: {get_functions(obj)}")
         fun_exec = getattr(obj, fun)
     elif package is not None:
-        module = importlib.import_module(package)
+        module = get_package(package)
         if not hasattr(module, fun):
             raise ValueError(
                 f"Module: '{module}' does not have function: '{fun}' options: {get_functions(module=module)}")
