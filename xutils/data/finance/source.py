@@ -1,3 +1,5 @@
+import yfinance as yf
+
 from xutils.core import net_utils as nu
 import xutils.core.file_utils as fu
 import xutils.data.pandas_utils as pu
@@ -17,7 +19,6 @@ def download_yahoo(ticker: str,
                    update_if_older_than=7,
                    force_update=False):
     def _download():
-        import yfinance as yf
         y_ticker = yf.Ticker(ticker.replace(".", "-"))
         df = y_ticker.history(period="max")
         df.reset_index(level=0, inplace=True)
