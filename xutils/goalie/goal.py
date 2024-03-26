@@ -24,6 +24,12 @@ class GoalDefinition:
                  goal_manager: GoalManager = None) -> None:
         super().__init__()
 
+        # if name == "my_fun_args":
+        #     print("goal.py::__init__:27:", name)
+        #     if executor_params is not None:
+        #         for p in executor_params:
+        #             pyu.print_dict(p)
+
         self.goal_manager: GoalManager = goal_manager
 
         self.scope: str = scope
@@ -67,15 +73,33 @@ class GoalDefinition:
                                                             required=param["required"],
                                                             default=default_value,
                                                             data_type=param["type"],
+                                                            positional=param["positional"],
+                                                            args=param["args"],
                                                             kwargs=param["kwargs"])
 
-    def execute(self, possible_kwargs):
-        run_kwargs = {**self.param_defaults}
-        for kwarg_name, kwarg_value in possible_kwargs.items():
-            if kwarg_name in self.params:
-                run_kwargs[kwarg_name] = kwarg_value
+        self.executor_has_args_param = any(param.args for param in self.params.values())
+        self.executor_has_kwargs_param = any(param.kwargs for param in self.params.values())
 
-        return self.executor(**run_kwargs)
+    def execute(self, possible_kwargs):
+        run_args = []
+        run_kwargs = {}
+        for name, param in self.params.items():
+            if name in possible_kwargs:
+                value = possible_kwargs[name]
+                if self.executor_has_args_param:
+                    if param.args:
+                        run_args.extend(value)
+                    elif param.required:
+                        run_args.append(value)
+                    else:
+                        run_kwargs[name] = value
+                else:
+                    run_kwargs[name] = value
+            elif param.default is not None:
+                run_kwargs[name] = param.default
+            # todo: required but not found?
+
+        return self.executor(*run_args, **run_kwargs)
 
     def from_json(self, json):
         pass
@@ -112,6 +136,13 @@ class GoalDefinition:
         return {param_name: param_value
                 for param_name, param_value in self.params.items()
                 if param_value.goal is not None}
+
+    def param_args(self) -> Optional[GoalParam]:
+        for param in self.params.values():
+            if param.args:
+                return param
+
+        return None
 
     def param_kwargs(self) -> Optional[GoalParam]:
         for param in self.params.values():
@@ -196,9 +227,11 @@ class GoalParam:
                  label: Optional[str] = None,
                  description: Optional[str] = None,
                  data_type=None,
+                 positional: bool = False,
                  required: bool = False,
                  goal: Optional[Union[str, Callable, GoalDefinition]] = None,
                  run_goal: bool = False,
+                 args: bool = False,
                  kwargs: bool = False,
                  **goal_kwargs) -> None:
         self.name = name
@@ -206,6 +239,7 @@ class GoalParam:
         self.default = default
         self.label = label
         self.description: str = description
+        self.positional: bool = positional
         self.required: bool = required
 
         self.goal = goal
@@ -227,6 +261,7 @@ class GoalParam:
         else:
             self.data_type = None
 
+        self.args = args
         self.kwargs = kwargs
 
     def inputs(self) -> Dict[str, GoalParam]:
@@ -349,6 +384,33 @@ class GoalManager:
     def in_scope(self, scope: str):
         return GoalScope(goal_manager=self, scope=scope)
 
+    def get(self,
+            goal: Union[str, Callable, GoalDefinition],
+            scope: Optional[str] = None,
+            fail_if_missing: bool = True) -> GoalDefinition:
+        # found_goals = self.find(scope=scope,
+        #                         goals=[goal],
+        #                         fail_if_missing=fail_if_missing)
+        # return next(iter(found_goals.values()))
+        if isinstance(goal, GoalDefinition):
+            return goal
+        elif isinstance(goal, str):
+            if goal in self.lib.get(scope):
+                return self.lib.get(scope)[goal]
+            elif goal in self.core_lib.get(self.SCOPE_STANDARD):
+                return self.core_lib.get(self.SCOPE_STANDARD)[goal]
+            else:
+                if "." in goal:
+                    scope_goal = goal.rsplit('.', 1)
+                    if len(scope_goal) == 2:
+                        split_scope, split_goal = scope_goal
+                        if split_goal in self.lib.get(split_scope):
+                            return self.lib.get(split_scope)[split_goal]
+        else:
+            raise ValueError(f"{goal} is not a valid goal type")
+
+        raise MissingGoal(goal, scope)
+
     def find(self,
              scope: Optional[str] = None,
              goals: Optional[List[Union[str, Callable, GoalDefinition]]] = None,
@@ -391,14 +453,6 @@ class GoalManager:
                     raise ValueError(f"{goal} is not a valid goal type")
 
             return filtered_goals
-
-    def get(self, goal,
-            scope: Optional[str] = None,
-            fail_if_missing: bool = True) -> GoalDefinition:
-        found_goals = self.find(scope=scope,
-                                goals=[goal],
-                                fail_if_missing=fail_if_missing)
-        return next(iter(found_goals.values()))
 
     def goal_names(self, scope: Optional[str] = None) -> List[str]:
         return list(self.find(scope=scope).keys())
@@ -530,7 +584,16 @@ class GoalManager:
             context: Optional[GoalRunContext] = None,
             fun_kwargs: Optional[Dict[str, Any]] = None,
             **kwargs):
+
         scope = self.get_scope(scope)
+
+        goal_def = self.get(goal, scope=scope)
+        if goal_def is None:
+            raise UnmetGoal(goal,
+                            phase="run",
+                            message=f"Error in run goal is missing")
+
+        scope = goal_def.scope
 
         context = GoalRunContext(goal=goal,
                                  scope=scope,
@@ -545,12 +608,6 @@ class GoalManager:
 
         # self.log(context, "Start", fun_kwargs)
         self.log(context, "Start")
-
-        goal_def = self.get(goal, scope=scope)
-        if goal_def is None:
-            raise UnmetGoal(goal,
-                            phase="run",
-                            message=f"Error in run goal is missing")
 
         updated_kwargs = fun_kwargs.copy()
 
@@ -644,6 +701,21 @@ class GoalManager:
 
     def debug(self, on: bool = True) -> None:
         self.print_logs = on
+
+    def add_package(self, package: str, scope: str = None) -> None:
+        if scope is None:
+            scope = package
+
+        package_funs = pyu.get_functions(module=package)
+        for name, fun in package_funs:
+            goal_def = GoalDefinition(name=name,
+                                      scope=scope,
+                                      executor=fun,
+                                      executor_return_type=pyu.return_type(fun),
+                                      executor_params=pyu.params(fun).values(),
+                                      goal_manager=self)
+            self.add(goal_def)
+
 
 # todo: bring back for default scope
 # class GoalScope:
