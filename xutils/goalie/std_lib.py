@@ -1,6 +1,6 @@
 import functools
-import importlib
 import itertools
+import operator
 import os.path
 from typing import Any, Callable, List, Iterable, Dict, Union, Optional
 
@@ -56,6 +56,12 @@ def init_lib(goal: GoalManager, scope: str):
         # setattr(obj, what, value)
         return obj
 
+    @goal(name="set_all", scope=scope)
+    def set_all(obj: Any, what: Dict) -> Any:
+        for key, value in what.items():
+            _set(obj=obj, what=key, value=value)
+        return obj
+
     @goal(name="index", scope=scope)
     def _index(obj, what: Any):
         return obj[what]
@@ -101,8 +107,11 @@ def init_lib(goal: GoalManager, scope: str):
         return x or y
 
     @goal(name="multiply", scope=scope)
-    def multiply(x: Any, y: Any) -> Any:
-        return x * y
+    def multiply(x: Any, y: Any = None) -> Any:
+        if y is None and isinstance(x, Iterable):
+            return functools.reduce(operator.mul, x)
+        else:
+            return x * y
 
     @goal(name="divide", scope=scope)
     def divide(x: Any, y: Any) -> Any:
@@ -143,7 +152,7 @@ def init_lib(goal: GoalManager, scope: str):
     @goal(scope=scope)
     def loop(over: Union[Iterable[Any], Dict[str, Iterable[Any]]],
              do: Union[Callable[[Any], Any], Iterable[Callable]],
-             loop_item: Optional[str] = None) -> Any:
+             item: Optional[str] = None) -> Any:
         if isinstance(do, str):
             do = goal.get(do)
         # todo: how to handle non permute
@@ -154,11 +163,10 @@ def init_lib(goal: GoalManager, scope: str):
                 # do(**fun_kwargs)
                 result = _with(do=do, kwargs=fun_kwargs)
         else:
-            print("std_lib.py::loop:158")
             for e in over:
-                if loop_item:
+                if item:
                     # do(**{loop_item: e})
-                    result = _with(do=do, kwargs={loop_item: e})
+                    result = _with(do=do, kwargs={item: e})
                 else:
                     # do(e)
                     result = _with(do=do, kwargs=e)
@@ -202,7 +210,7 @@ def init_lib(goal: GoalManager, scope: str):
         return pu.merge_all(these)
 
     @goal(name="reduce", scope=scope)
-    def reduce(these: Iterable, how: Optional[Callable] = None, initial: Optional[Any] = None) -> object:
+    def _reduce(these: Iterable, how: Optional[Callable] = None, initial: Optional[Any] = None) -> object:
         if how is not None:
             return functools.reduce(how, these, initial)
         else:
@@ -222,6 +230,10 @@ def init_lib(goal: GoalManager, scope: str):
     @goal(scope=scope)
     def plus(x, y):
         return x + y
+
+    @goal(name="append", scope=scope)
+    def _append(to: List, what):
+        return to.append(what)
 
     @goal(scope=scope)
     def concat(x, y):
