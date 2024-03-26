@@ -1,5 +1,5 @@
 import os
-from typing import Callable, List, Iterable, Union, Dict
+from typing import Callable, List, Iterable, Union, Dict, Any
 
 import pandas as pd
 import numpy as np
@@ -9,11 +9,27 @@ import xutils.core.python_utils as pyu
 import xutils.data.numpy_utils as nu
 
 
-def read(*paths) -> pd.DataFrame:
+def from_data(data) -> pd.DataFrame:
+    return pd.DataFrame(data)
+
+
+def add_row(df: pd.DataFrame, row: Dict) -> pd.DataFrame:
+    return pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+
+
+def read(*paths: str) -> pd.DataFrame:
     return pd.read_csv(os.path.join(*paths))
 
 
-def write(df: pd.DataFrame, *paths):
+def get_value(df: Union[str, pd.DataFrame], column: str, row: int=-1):
+    if isinstance(df, str):
+        df = read(df)
+    return df.iloc[row][column]
+
+
+def write(df: Union[Any, pd.DataFrame], *paths):
+    if not isinstance(df, pd.DataFrame):
+        df = from_data(df)
     path = os.path.join(*paths)
     fu.create_parent_dirs(path)
     df.to_csv(path, index=False)
@@ -238,24 +254,30 @@ def get_correlation(df, d1, d2, spearman=False, kendall=False, verbose=False):
     return result
 
 
-def lower_case_columns(df):
+def lower_case_columns(df: pd.DataFrame):
     df.columns = df.columns.str.lower()
     return df
 
 
-def add_calc_column(df, column_name, calc_fn, cleanup=False):
+def add_mean_column(df: pd.DataFrame, columns: List[str], column_name: str = "Average") -> pd.DataFrame:
+    print("pandas_utils.py::add_mean_column:263", df)
+    df[column_name] = df[columns].mean(axis=1)
+    return df
+
+
+def add_calc_column(df: pd.DataFrame, column_name: str, calc_fn: Callable, cleanup: bool = False):
     df[column_name] = calc_fn(df)
     if cleanup:
         drop_na(df)
     return df
 
 
-def concat_unique(dfs:  Iterable[pd.DataFrame]):
+def concat_unique(dfs: Iterable[pd.DataFrame]):
     df = pd.concat(dfs, axis=1)
     return df.loc[:, ~df.columns.duplicated()]
 
 
-def concat_dicts(dfs:  Iterable[Dict]):
+def concat_dicts(dfs: Iterable[Dict]):
     return pd.DataFrame.from_records(dfs)
 
 
@@ -295,27 +317,27 @@ def read_enrich_write(source_data_path: str,
                                                       fu.modified_after(source_data_path, save_path))))
 
 
-def rows_cols(df, row_start, row_end=None, cols=None):
+def rows_cols(df: pd.DataFrame, row_start: int, row_end: int = None, cols: List[int] = None):
     return df.iloc[row_start:row_end, [df.columns.get_loc(column) for column in cols]]
 
 
-def cols(df, *cols):
+def cols(df: pd.DataFrame, *cols: int):
     return df.loc[:, cols]
 
 
-def quartiles(df, column, points):
+def quartiles(df: pd.DataFrame, column: str, points: List[float]):
     return df[column].quantile(points if points else [0.25, 0.5, 0.75]).values
 
 
-def get_columns_by_type(df, types):
+def get_columns_by_type(df: pd.DataFrame, types):
     return df.select_dtypes(include=types)
 
 
-def get_min_max(df):
+def get_min_max(df: pd.DataFrame):
     return nu.get_min_max(df)
 
 
-def scale_min_max(df, min_max):
+def scale_min_max(df: pd.DataFrame, min_max):
     df_scaled = df.copy()
 
     # apply normalization techniques
