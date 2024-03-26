@@ -13,19 +13,19 @@ from datetime import datetime
 
 
 def path_inspect(path: str, search="*", trim_path=True) -> None:
-    for file_name in Path(path).rglob(search):
-        print(str(file_name)[len(path) + 1:] if trim_path else file_name)
+    for name in Path(path).rglob(search):
+        print(str(name)[len(path) + 1:] if trim_path else name)
 
 
 def list_paths(path: str,
-               extension: str = None,
+               file_extension: str = None,
                sort_name: bool = True,
                sort_size: bool = False,
                sort_updated: bool = False,
                recursive: bool = False,
                only_directories: bool = False,
                just_name: bool = False) -> Optional[List[str]]:
-    paths = glob.glob(os.path.join(path, "*" if extension is None else f"*.{extension}"),
+    paths = glob.glob(os.path.join(path, "*" if file_extension is None else f"*.{file_extension}"),
                       recursive=recursive)
     if only_directories:
         paths = [path for path in paths if os.path.isdir(path)]
@@ -40,6 +40,25 @@ def list_paths(path: str,
     if just_name:
         paths = [PurePath(path).name for path in paths]
     return paths
+
+
+def get_first_path(path: str,
+                   file_extension: str = None,
+                   sort_name: bool = True,
+                   sort_size: bool = False,
+                   sort_updated: bool = False,
+                   recursive: bool = False,
+                   only_directories: bool = False,
+                   just_name: bool = False) -> str:
+    paths = list_paths(path=path,
+                       file_extension=file_extension,
+                       sort_name=sort_name,
+                       sort_size=sort_size,
+                       sort_updated=sort_updated,
+                       recursive=recursive,
+                       only_directories=only_directories,
+                       just_name=just_name)
+    return paths[0] if len(paths) else None
 
 
 def file_name(path: str, strip_extension: bool = False) -> str:
