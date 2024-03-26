@@ -187,7 +187,6 @@ class GoalieTest(unittest.TestCase):
 
     def test_with_fun_ref_mixed(self):
         goal.reset()
-        goal.debug()
 
         @goal
         def my_fun_2():
@@ -337,3 +336,18 @@ class GoalieTest(unittest.TestCase):
 
     def test_fun_parse(self):
         pass
+
+    def test_positional(self):
+        goal.reset()
+        @goal
+        def my_fun(factor):
+            return 100 * factor
+
+        @goal
+        def my_fun_args(factor, *others):
+            result = factor
+            for x in others:
+                result = result * x
+            return result
+
+        self.assertEqual(goal.run("my_fun_args", factor=3, others=[2, 5]), 30)
