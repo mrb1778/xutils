@@ -216,6 +216,15 @@ def run_batch(goal_manager: GoalManager,
     if "params" in batch:
         run_kwargs.update(batch["params"])
 
+    if "packages" in batch:
+        packages = batch["packages"]
+        if isinstance(packages, Dict):
+            for package_scope, package_name in packages.items():
+                goal_manager.add_package(package_name, scope=package_scope)
+        else:
+            for package_name in batch["packages"]:
+                goal_manager.add_package(package_name)
+
     if "goals" in batch:
         goals = batch["goals"]
         for goal_name, goal_def in goals.items():
