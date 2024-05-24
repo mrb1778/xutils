@@ -50,20 +50,8 @@ class SimpleExpressionEvaluator(ExpressionEvaluator):
         else:
             return expression
 
-
-        # if self.is_expression(expression):
-        #     return self._eval_expression(expression,
-        #                                  variable_resolver)
-        # elif self.has_expression(expression):
-        #     print("sexpression.py::eval:35")
-        #     exit()
-        #     # return expression
-        # else:
-        #     return expression
-
     def _prep_expression(self, expression: str) -> str:
         return re.findall(self.expression_matcher, expression)[0]
-        # return expression.replace(self.expression_start, "").replace(self.expression_end, "")
 
     def _eval_expression(self, expression: str, variable_resolver):
         split_expression = expression.split()

@@ -1,5 +1,5 @@
 import os
-from typing import Callable, List, Iterable, Union, Dict, Any
+from typing import Callable, List, Iterable, Union, Dict, Any, Optional
 
 import pandas as pd
 import numpy as np
@@ -17,23 +17,52 @@ def add_row(df: pd.DataFrame, row: Dict) -> pd.DataFrame:
     return pd.concat([df, pd.DataFrame([row])], ignore_index=True)
 
 
-def read(*paths: str) -> pd.DataFrame:
-    return pd.read_csv(os.path.join(*paths))
+def load_if(load_fn: Callable[[], pd.DataFrame],
+            save_path: str = None,
+            if_older_than: Optional[int] = None,
+            force_update: bool = False) -> pd.DataFrame:
+    if save_path is None or force_update or fu.older_than(path=save_path, days=if_older_than):
+        df = load_fn()
+        if save_path is not None:
+            write(df=df, path=save_path)
+        return df
+    else:
+        return read(save_path)
 
 
-def get_value(df: Union[str, pd.DataFrame], column: str, row: int=-1):
+def read(path: str, tail: Optional[int] = None, empty_if_none: bool = False) -> pd.DataFrame:
+    if not os.path.isfile(path) and empty_if_none:
+        return pd.DataFrame()
+    else:
+        df = pd.read_csv(path)
+        return df.tail(tail) if tail is not None else df
+
+
+def get_value(df: Union[str, pd.DataFrame], column: str, row: int = -1) -> Any:
     if isinstance(df, str):
         df = read(df)
     return df.iloc[row][column]
 
 
-def write(df: Union[Any, pd.DataFrame], *paths):
+def get_values(df: Union[str, pd.DataFrame], *columns: str, row: int = -1) -> Dict[str, Any]:
+    if isinstance(df, str):
+        df = read(df)
+    return {column: df.iloc[row][column] for column in columns}
+
+
+def write(df: Union[Any, pd.DataFrame], path: str) -> pd.DataFrame:
     if not isinstance(df, pd.DataFrame):
         df = from_data(df)
-    path = os.path.join(*paths)
     fu.create_parent_dirs(path)
     df.to_csv(path, index=False)
     return df
+
+
+def append_write(path: str, data: Dict) -> pd.DataFrame:
+    df = read(path, empty_if_none=True)
+    df_data = pd.DataFrame([data])
+    df = pd.concat([df, df_data], ignore_index=True)
+    return write(df, path)
 
 
 def cast_to_int(df: pd.DataFrame, *columns):
@@ -259,13 +288,39 @@ def lower_case_columns(df: pd.DataFrame):
     return df
 
 
-def add_mean_column(df: pd.DataFrame, columns: List[str], column_name: str = "Average") -> pd.DataFrame:
-    print("pandas_utils.py::add_mean_column:263", df)
-    df[column_name] = df[columns].mean(axis=1)
+def mean(df: pd.DataFrame, columns: List[str]) -> pd.Series:
+    return df[columns].mean(axis=1)
+
+
+def add_mean(df: pd.DataFrame, columns: List[str], column_name: str = "Average") -> pd.DataFrame:
+    df[column_name] = mean(df=df, columns=columns)
     return df
 
 
-def add_calc_column(df: pd.DataFrame, column_name: str, calc_fn: Callable, cleanup: bool = False):
+def upper_threshold(df: pd.DataFrame,
+                    column: str,
+                    threshold: float = 0.8,
+                    default_value: Any = "") -> pd.DataFrame:
+    return df[column].where(df[column].abs() >= threshold, default_value)
+
+
+def add_upper_threshold(df: pd.DataFrame,
+                        column: str,
+                        column_name: str = "Threshold",
+                        threshold: float = 0.8,
+                        default_value: Any = "") -> pd.DataFrame:
+    df[column_name] = upper_threshold(df=df, column=column, threshold=threshold, default_value=default_value)
+    return df
+
+
+def add_columns(df: pd.DataFrame, columns: Dict[str, pd.Series]) -> pd.DataFrame:
+    for name, value in columns.items():
+        df[name] = value
+
+    return df
+
+
+def add_calc_column(df: pd.DataFrame, column_name: str, calc_fn: Callable, cleanup: bool = False) -> pd.DataFrame:
     df[column_name] = calc_fn(df)
     if cleanup:
         drop_na(df)
@@ -281,7 +336,7 @@ def concat_dicts(dfs: Iterable[Dict]):
     return pd.DataFrame.from_records(dfs)
 
 
-def merge_all(dfs: Iterable[pd.DataFrame], on : str = None, how='outer'):
+def merge_all(dfs: Iterable[pd.DataFrame], on: str = None, how='outer'):
     merged = None
     for df in dfs:
         if merged is None:
@@ -351,3 +406,42 @@ def scale_min_max(df: pd.DataFrame, min_max):
 
 def invert_to_dict(df: pd.DataFrame) -> dict:
     return df.to_dict(orient="records")
+
+
+class DataChain:
+
+    def __init__(self, df: pd.DataFrame = None):
+        super().__init__()
+        self.df: pd.DataFrame = df
+        self.dirty: bool = False
+
+    #     self.last_data_cache = None
+    #     self.data_invalid = False
+    #
+    #
+    def load(self,
+             load_fn: Callable[[], pd.DataFrame],
+             save_path: str = None,
+             update_if_older_than: Optional[int] = None,
+             force_update: bool = False) -> pd.DataFrame:
+        if save_path is None or force_update or fu.older_than(path=save_path, days=update_if_older_than):
+            self.df = load_fn()
+            if save_path is not None:
+                write(df=self.df, path=save_path)
+            self.dirty = True
+        else:
+            self.df = read(save_path)
+            self.dirty = False
+
+        return self.df
+
+    def add_column(self,
+                   column_name: str,
+                   column_fn: Callable = None,
+                   column_data=None,
+                   save_path: str = None,
+                   force_update: bool = False):
+        pass
+
+    def transform_df(self, cache_path: str):
+        pass

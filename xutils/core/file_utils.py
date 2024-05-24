@@ -1,4 +1,5 @@
 import glob
+import math
 
 import os
 import shutil
@@ -148,9 +149,7 @@ def create_file_if(path: str,
                    create_fn,
                    update_if_older_than: int = None,
                    update=False):
-    if update or \
-            not os.path.isfile(path) or \
-            (update_if_older_than is not None and modified_days_ago(path) > update_if_older_than):
+    if update or older_than(path, update_if_older_than):
         create_parent_dirs(path)
         return create_fn(path)
     else:
@@ -217,8 +216,20 @@ def modified(path: str) -> float:
     return Path(path).stat().st_mtime if path else 0
 
 
-def modified_days_ago(path: str) -> int:
-    return (datetime.now() - datetime.fromtimestamp(modified(path))).days
+def older_than(path: str, days: int) -> bool:
+    if days is None:
+        return True
+    elif not os.path.isfile(path):
+        return True
+    else:
+        return modified_days_ago(path) > days
+
+
+def modified_days_ago(path: str) -> float:
+    if not os.path.isfile(path):
+        return math.inf
+    else:
+        return (datetime.now() - datetime.fromtimestamp(modified(path))).days
 
 
 def modified_after(after, before) -> bool:

@@ -1,4 +1,4 @@
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, Callable
 
 import numpy as np
 import sklearn.utils as sku

@@ -9,6 +9,7 @@ import xutils.dl.pytorch.lightning_utils as lu
 import xutils.core.file_utils as fu
 import xutils.data.json_utils as ju
 import xutils.data.data_utils as du
+import xutils.data.pandas_utils as pu
 
 
 def get_model(model_definition: Dict[str, Any],
@@ -152,7 +153,7 @@ class CheckpointMeta:
             return decoded_labels
 
     def run_as_df(self,
-                  df: Union[pd.DataFrame, Any],
+                  df: pd.DataFrame,
                   criteria: str = "F1 score (weighted)") -> pd.DataFrame:
         performance = self.get_performance(criteria)
         results, confidence = self.run(df, confidence=True)
@@ -165,7 +166,9 @@ class CheckpointMeta:
 
 
 def run_checkpoint_to_df(checkpoint: str,
-                         df: pd.DataFrame,
+                         df: Union[str, pd.DataFrame],
                          criteria: str = "F1 score (weighted)") -> pd.DataFrame:
     checkpoint_meta = CheckpointMeta(checkpoint)
+    if isinstance(df, str):
+        df = pu.read(path=df)
     return checkpoint_meta.run_as_df(df=df, criteria=criteria)
