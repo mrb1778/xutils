@@ -1,3 +1,4 @@
+import pandas as pd
 import yfinance as yf
 
 from xutils.core import net_utils as nu
@@ -16,17 +17,20 @@ def download_alphavantage(path, ticker, api_key, update=False):
 
 def download_yahoo(ticker: str,
                    save_path=None,
+                   auto_adjust: bool = False,
                    update_if_older_than=7,
-                   force_update=False):
+                   force_update=False) -> pd.DataFrame:
     def _download():
         y_ticker = yf.Ticker(ticker.replace(".", "-"))
-        df = y_ticker.history(period="max")
-        df.reset_index(level=0, inplace=True)
+        df = y_ticker.history(
+            period="max",
+            auto_adjust=auto_adjust)
+        # df.reset_index(level=0, inplace=True)
         df.rename(columns={
-            "Date": "timestamp",
-            "Stock Splits": "split",
-            "Dividends": "dividend"
-        },
+                "Date": "timestamp",
+                "Stock Splits": "split",
+                "Dividends": "dividend"
+            },
             inplace=True)
         pu.lower_case_columns(df)
         return df
@@ -37,8 +41,9 @@ def download_yahoo(ticker: str,
         def _save_and_download(path):
             df = download_yahoo(ticker)
             df.to_csv(path, index=False)
-            return path
-        return fu.create_file_if(save_path,
-                                 _save_and_download,
-                                 update_if_older_than=update_if_older_than,
-                                 update=force_update)
+
+        fu.create_file_if(path=save_path,
+                          create_fn=_save_and_download,
+                          update_if_older_than=update_if_older_than,
+                          update=force_update)
+        return pu.read(save_path)

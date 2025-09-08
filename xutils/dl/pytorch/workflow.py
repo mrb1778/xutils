@@ -170,5 +170,5 @@ def run_checkpoint_to_df(checkpoint: str,
                          criteria: str = "F1 score (weighted)") -> pd.DataFrame:
     checkpoint_meta = CheckpointMeta(checkpoint)
     if isinstance(df, str):
-        df = pu.read(path=df)
+        df = pu.read(xpath=df)
     return checkpoint_meta.run_as_df(df=df, criteria=criteria)

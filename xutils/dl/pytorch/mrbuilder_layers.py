@@ -1,10 +1,10 @@
 import torch
 
 from mrbuilder.builders.pytorch.builder_models import PyTorchBuilderLayer
-from mrbuilder.builders.pytorch.layer_registry import register_layer
+from mrbuilder.builders.pytorch.layer_registry import layer
 
 
-@register_layer("BiChannelDifference")
+@layer("BiChannelDifference")
 class BiChannelDifferenceBuilderLayer(PyTorchBuilderLayer):
     def forward(self, x):
         right = torch.roll(x, 1, 0)

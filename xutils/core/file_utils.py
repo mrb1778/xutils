@@ -1,16 +1,17 @@
 import glob
 import math
-
 import os
 import shutil
 import tarfile
 import tempfile
-from typing import Union, Optional, List, Set
-
+from datetime import datetime
+from pathlib import Path, PurePath
+from typing import Optional, List, Set
 from urllib.request import urlopen
 
-from pathlib import Path, PurePath
-from datetime import datetime
+#
+# def join(*paths: str) -> str:
+#     return os.path.join(*paths)
 
 
 def path_inspect(path: str, search="*", trim_path=True) -> None:
@@ -151,9 +152,9 @@ def create_file_if(path: str,
                    update=False):
     if update or older_than(path, update_if_older_than):
         create_parent_dirs(path)
-        return create_fn(path)
-    else:
-        return path
+        create_fn(path)
+
+    return path
 
 
 def create_parent_dirs(path: str) -> None:
@@ -234,3 +235,8 @@ def modified_days_ago(path: str) -> float:
 
 def modified_after(after, before) -> bool:
     return modified(after) > modified(before)
+
+
+def truncate(xpath: str):
+    with open(xpath, 'w') as f:
+        f.seek(0)

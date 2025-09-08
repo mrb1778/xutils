@@ -24,24 +24,35 @@ def load_if(load_fn: Callable[[], pd.DataFrame],
     if save_path is None or force_update or fu.older_than(path=save_path, days=if_older_than):
         df = load_fn()
         if save_path is not None:
-            write(df=df, path=save_path)
+            write(df=df, xpath=save_path)
         return df
     else:
         return read(save_path)
 
 
-def read(path: str, tail: Optional[int] = None, empty_if_none: bool = False) -> pd.DataFrame:
-    if not os.path.isfile(path) and empty_if_none:
+def read(xpath: str, tail: Optional[int] = None, empty_if_none: bool = False) -> pd.DataFrame:
+    if (not os.path.isfile(xpath) or os.path.getsize(xpath) == 0) and empty_if_none:
         return pd.DataFrame()
     else:
-        df = pd.read_csv(path)
+        df = pd.read_csv(xpath)
         return df.tail(tail) if tail is not None else df
 
 
-def get_value(df: Union[str, pd.DataFrame], column: str, row: int = -1) -> Any:
+def get_value(df: Union[str, pd.DataFrame],
+              column: str,
+              row: int = -1,
+              where: str = None,
+              value: str = None) -> Any:
     if isinstance(df, str):
         df = read(df)
-    return df.iloc[row][column]
+    return df.iloc[row][column] if where is None \
+        else df.loc[df[where] == value, column].values[0]
+
+
+def get_value_where(df: Union[str, pd.DataFrame], column: str, other: str, value: str) -> Any:
+    if isinstance(df, str):
+        df = read(df)
+    return df.loc[df[other] == value, column].values[0]
 
 
 def get_values(df: Union[str, pd.DataFrame], *columns: str, row: int = -1) -> Dict[str, Any]:
@@ -50,19 +61,19 @@ def get_values(df: Union[str, pd.DataFrame], *columns: str, row: int = -1) -> Di
     return {column: df.iloc[row][column] for column in columns}
 
 
-def write(df: Union[Any, pd.DataFrame], path: str) -> pd.DataFrame:
+def write(df: Union[Any, pd.DataFrame], xpath: str) -> pd.DataFrame:
     if not isinstance(df, pd.DataFrame):
         df = from_data(df)
-    fu.create_parent_dirs(path)
-    df.to_csv(path, index=False)
+    fu.create_parent_dirs(xpath)
+    df.to_csv(xpath, index=False)
     return df
 
 
-def append_write(path: str, data: Dict) -> pd.DataFrame:
-    df = read(path, empty_if_none=True)
+def append_write(xpath: str, data: Dict) -> pd.DataFrame:
+    df = read(xpath, empty_if_none=True)
     df_data = pd.DataFrame([data])
     df = pd.concat([df, df_data], ignore_index=True)
-    return write(df, path)
+    return write(df, xpath)
 
 
 def cast_to_int(df: pd.DataFrame, *columns):
@@ -284,7 +295,7 @@ def get_correlation(df, d1, d2, spearman=False, kendall=False, verbose=False):
 
 
 def lower_case_columns(df: pd.DataFrame):
-    df.columns = df.columns.str.lower()
+    df.columns = [str(col).lower() for col in df.columns]
     return df
 
 
@@ -292,8 +303,17 @@ def mean(df: pd.DataFrame, columns: List[str]) -> pd.Series:
     return df[columns].mean(axis=1)
 
 
-def add_mean(df: pd.DataFrame, columns: List[str], column_name: str = "Average") -> pd.DataFrame:
+def add_mean(df: Union[str, pd.DataFrame],
+             columns: List[str],
+             column_name: str = "Average",
+             out_path: str = None) -> pd.DataFrame:
+    if isinstance(df, str):
+        if out_path is None:
+            out_path = df
+        df = read(df)
     df[column_name] = mean(df=df, columns=columns)
+    if out_path is not None:
+        write(df, out_path)
     return df
 
 
@@ -304,12 +324,19 @@ def upper_threshold(df: pd.DataFrame,
     return df[column].where(df[column].abs() >= threshold, default_value)
 
 
-def add_upper_threshold(df: pd.DataFrame,
+def add_upper_threshold(df: Union[str, pd.DataFrame],
                         column: str,
                         column_name: str = "Threshold",
                         threshold: float = 0.8,
-                        default_value: Any = "") -> pd.DataFrame:
+                        default_value: Any = "",
+                        out_path: str = None) -> pd.DataFrame:
+    if isinstance(df, str):
+        if out_path is None:
+            out_path = df
+        df = read(df)
     df[column_name] = upper_threshold(df=df, column=column, threshold=threshold, default_value=default_value)
+    if out_path is not None:
+        write(df, out_path)
     return df
 
 
@@ -427,7 +454,7 @@ class DataChain:
         if save_path is None or force_update or fu.older_than(path=save_path, days=update_if_older_than):
             self.df = load_fn()
             if save_path is not None:
-                write(df=self.df, path=save_path)
+                write(df=self.df, xpath=save_path)
             self.dirty = True
         else:
             self.df = read(save_path)

@@ -1,4 +1,4 @@
-from typing import Iterable, Dict
+from typing import Iterable, Dict, Callable
 
 import numpy as np
 import pandas as pd
@@ -9,6 +9,7 @@ import ta.volatility as volatility
 import ta.volume as volume
 from stockstats import StockDataFrame as sdf
 import plotly.graph_objects as go
+import backtrader as bt
 
 BUY = 2
 HOLD = 1
@@ -756,3 +757,72 @@ def graph(df: pd.DataFrame, name: str) -> None:
     )
 
     layout.show()
+
+
+def run_cerebro(df: pd.DataFrame,
+                strategy: Callable,
+                initial_balance: float = 100000.0,
+                commission: float = 0.0):
+    cerebro = bt.Cerebro()  # create a "Cerebro" engine instance
+    cerebro.addstrategy(strategy)
+
+    # 2. Set the initial cash for the broker
+    initial_cash = 100000.0  # Set your desired starting capital here
+    cerebro.broker.setcash(initial_balance)
+    cerebro.broker.setcommission(commission=commission)
+
+    feed = bt.feeds.PandasData(
+        dataname=df
+        # ,
+        # datetime=0,
+        # open=1,
+        # high=2,
+        # low=3,
+        # close=4,
+        # volume=5
+    )
+    cerebro.adddata(feed)
+
+    print(f'Starting Portfolio Value: {cerebro.broker.getvalue():.2f}')
+    cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
+    cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
+    cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
+    cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalysis')
+    cerebro.addanalyzer(bt.analyzers.SQN, _name='sqn')
+
+    results = cerebro.run()
+    for index, result in enumerate(results):  # The list contains a single strategy instance in this case
+        print(f'Result {index} ------ ')
+        print(f'Final Portfolio Value: {cerebro.broker.getvalue():.2f}')
+
+        print("\n--- Analyzer Results ---")
+        sharpe_ratio_analysis = result.analyzers.sharpe.get_analysis()
+        if 'sharperatio' in sharpe_ratio_analysis and sharpe_ratio_analysis['sharperatio'] is not None:
+            print(f"Sharpe Ratio: {sharpe_ratio_analysis['sharperatio']:.4f}")
+        else:
+            print("Sharpe Ratio: N/A (not enough trades or data for calculation)")
+
+        drawdown_analysis = result.analyzers.drawdown.get_analysis()
+        print(f"Max Drawdown: {drawdown_analysis.max.drawdown:.2f}%")
+
+        returns_analysis = result.analyzers.returns.get_analysis()
+        print(f"Total Return: {returns_analysis['rtot']:.2f}%")
+        print(f"Annualized Return: {returns_analysis['rnorm100']:.2f}%")
+
+        trade_analysis = result.analyzers.tradeanalysis.get_analysis()
+        print("\nTrade Analyzer:")
+        if 'total' in trade_analysis and 'total' in trade_analysis.total and trade_analysis.total.total > 0:
+            print(f"Total Trades: {trade_analysis.total.closed}")
+            print(f"Winning Trades: {trade_analysis.won.total}")
+            print(f"Losing Trades: {trade_analysis.lost.total}")
+            if 'pfactor' in trade_analysis:
+                print(f"Profit Factor: {trade_analysis.pfactor:.2f}")
+            else:
+                # This will happen if there were no losing trades
+                print("Profit Factor: N/A (No losing trades or not enough data)")
+        else:
+            print("No trades were closed during the backtest.")
+
+        # SQN
+        sqn_analysis = result.analyzers.sqn.get_analysis()
+        print(f"SQN (System Quality Number): {sqn_analysis.sqn:.2f}")
