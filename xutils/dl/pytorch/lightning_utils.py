@@ -1,6 +1,6 @@
 import os
 import time
-from typing import Tuple, Any, Optional, Literal, Union, Callable
+from typing import Tuple, Any, Optional, Literal, Union, Callable, IO
 
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateFinder, BatchSizeFinder, \
     TQDMProgressBar
@@ -14,7 +14,6 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
-from typing.io import IO
 
 from xutils.core.python_utils import getattr_ignore_case
 import xutils.data.data_utils as du
@@ -224,18 +223,21 @@ class DatasetDataModule(pl.LightningDataModule):
         return DataLoader(self.train_dataset,
                           batch_size=self.batch_size,
                           num_workers=self.num_workers,
+                          persistent_workers=True,
                           shuffle=True)
 
     def val_dataloader(self):
         return DataLoader(self.val_dataset,
                           batch_size=self.batch_size,
                           num_workers=self.num_workers,
+                          persistent_workers=True,
                           shuffle=False)
 
     def test_dataloader(self):
         return DataLoader(self.test_dataset,
                           batch_size=self.batch_size,
                           num_workers=self.num_workers,
+                          persistent_workers=True,
                           shuffle=False)
 
 
@@ -287,11 +289,17 @@ class PandasDataModule(DatasetDataModule):
                                               self.test_df[self.targets_col].values)
 
 
-def load_model(model: Union[pl.LightningModule, Callable[[Any], pl.LightningModule]], path: Union[str, IO], model_kwargs, wrap=False) -> pl.LightningModule:
+def load_model(model: Union[pl.LightningModule, Callable[[Any], pl.LightningModule]],
+               path: Union[str, IO],
+               model_kwargs,
+               wrap: bool = False,
+               compile_model: bool = True) -> pl.LightningModule:
     if wrap:
         model = wrap_model(model)
     model = model.load_from_checkpoint(checkpoint_path=path,
                                        kwargs=model_kwargs)
+    if compile_model and toru.get_device() != "mps":
+        model.compile()
     model.to(toru.get_device())
     return model
 
@@ -348,10 +356,10 @@ def train_model(model,
         # precision="16",
         # devices=-1,
         callbacks=[
-            # EarlyStopping(
-            #     monitor='val_loss',
-            #     patience=25
-            # ),
+            EarlyStopping(
+                monitor='val_loss',
+                patience=25
+            ),
             TQDMProgressBar(),
             # BatchSizeFinder(),
             # LearningRateFinder(),
@@ -377,7 +385,6 @@ def train_model(model,
     model = load_model(model=lightning_model_fn,
                        path=callback_checkpoint.best_model_path,
                        model_kwargs=train_kwargs)
-
     if dataset.test_dataset is not None:
         results = trainer.test(model, datamodule=dataset)
         print("Test Results", results)

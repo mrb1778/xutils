@@ -19,6 +19,7 @@ def download_yahoo(ticker: str,
                    save_path=None,
                    auto_adjust: bool = False,
                    update_if_older_than=7,
+                   use_adj_close: bool = True,
                    force_update=False) -> pd.DataFrame:
     def _download():
         y_ticker = yf.Ticker(ticker.replace(".", "-"))
@@ -26,13 +27,17 @@ def download_yahoo(ticker: str,
             period="max",
             auto_adjust=auto_adjust)
         # df.reset_index(level=0, inplace=True)
+        df = df.reset_index()
+        pu.lower_case_columns(df)
         df.rename(columns={
-                "Date": "timestamp",
-                "Stock Splits": "split",
-                "Dividends": "dividend"
+                "date": "timestamp",
+                "stock splits": "split",
+                "dividends": "dividend"
             },
             inplace=True)
-        pu.lower_case_columns(df)
+        if use_adj_close:
+            df.drop(columns=["close"], inplace=True)
+            df.rename(columns={"adj close": "close"}, inplace=True)
         return df
 
     if save_path is None:
@@ -46,4 +51,11 @@ def download_yahoo(ticker: str,
                           create_fn=_save_and_download,
                           update_if_older_than=update_if_older_than,
                           update=force_update)
-        return pu.read(save_path)
+        df = pu.read(save_path, parse_dates=["timestamp"])
+        df = df.reset_index()
+        # df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+        # df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+        df = pu.cast_to_timestamp_timezone(df, 'America/New_York', "timestamp")
+        return df

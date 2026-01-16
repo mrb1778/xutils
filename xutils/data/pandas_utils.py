@@ -1,8 +1,9 @@
 import os
-from typing import Callable, List, Iterable, Union, Dict, Any, Optional
+from typing import Callable, List, Iterable, Union, Dict, Any, Optional, Hashable
 
 import pandas as pd
 import numpy as np
+from pandas import Series
 
 import xutils.core.file_utils as fu
 import xutils.core.python_utils as pyu
@@ -30,11 +31,11 @@ def load_if(load_fn: Callable[[], pd.DataFrame],
         return read(save_path)
 
 
-def read(xpath: str, tail: Optional[int] = None, empty_if_none: bool = False) -> pd.DataFrame:
+def read(xpath: str, tail: Optional[int] = None, empty_if_none: bool = False, parse_dates=None) -> pd.DataFrame:
     if (not os.path.isfile(xpath) or os.path.getsize(xpath) == 0) and empty_if_none:
         return pd.DataFrame()
     else:
-        df = pd.read_csv(xpath)
+        df = pd.read_csv(xpath, parse_dates=parse_dates)
         return df.tail(tail) if tail is not None else df
 
 
@@ -78,6 +79,16 @@ def append_write(xpath: str, data: Dict) -> pd.DataFrame:
 
 def cast_to_int(df: pd.DataFrame, *columns):
     cast_to(df, 'int', *columns)
+    return df
+
+
+def cast_to_timestamp(df: pd.DataFrame, *columns):
+    cast_to(df, 'datetime64[ns]', *columns)
+    return df
+
+
+def cast_to_timestamp_timezone(df: pd.DataFrame, timezone, *columns):
+    cast_to(df, f'datetime64[ns, {timezone}]', *columns)
     return df
 
 
@@ -147,7 +158,9 @@ def fill_null(df: pd.DataFrame, *columns, default_value=0,
     return df
 
 
-def find_null(df: pd.DataFrame, null_column, return_column):
+def find_null(df: pd.DataFrame,
+              null_column,
+              return_column):
     return df.loc[df[null_column].isnull(), return_column].unique()
 
 
@@ -320,7 +333,7 @@ def add_mean(df: Union[str, pd.DataFrame],
 def upper_threshold(df: pd.DataFrame,
                     column: str,
                     threshold: float = 0.8,
-                    default_value: Any = "") -> pd.DataFrame:
+                    default_value: Any = "") -> pd.Series:
     return df[column].where(df[column].abs() >= threshold, default_value)
 
 
@@ -431,7 +444,7 @@ def scale_min_max(df: pd.DataFrame, min_max):
     return df_scaled
 
 
-def invert_to_dict(df: pd.DataFrame) -> dict:
+def invert_to_dict(df: pd.DataFrame) -> list[dict[Hashable, Any]]:
     return df.to_dict(orient="records")
 
 

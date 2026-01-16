@@ -6,7 +6,7 @@ import tarfile
 import tempfile
 from datetime import datetime
 from pathlib import Path, PurePath
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Generator
 from urllib.request import urlopen
 
 #
@@ -14,8 +14,16 @@ from urllib.request import urlopen
 #     return os.path.join(*paths)
 
 
+def find(path: str, search="*") -> Generator[Path, None, None]:
+    return Path(path).rglob(search)
+
+
+def find_one(path: str, search="*") -> Path:
+    return next(find(path, search))
+
+
 def path_inspect(path: str, search="*", trim_path=True) -> None:
-    for name in Path(path).rglob(search):
+    for name in find(path, search):
         print(str(name)[len(path) + 1:] if trim_path else name)
 
 

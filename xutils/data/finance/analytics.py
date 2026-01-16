@@ -1,4 +1,5 @@
-from typing import Iterable, Dict, Callable
+from datetime import datetime
+from typing import Iterable, Dict, Callable, Any, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -7,6 +8,7 @@ import ta.momentum as momentum
 import ta.trend as trend
 import ta.volatility as volatility
 import ta.volume as volume
+from numpy import ndarray, dtype
 from stockstats import StockDataFrame as sdf
 import plotly.graph_objects as go
 import backtrader as bt
@@ -580,7 +582,7 @@ def buy_hold_sell(df: pd.DataFrame, col_name: str, window_size: int = 11) -> np.
 #     return res
 
 
-def year_range(df: pd.DataFrame, start_date=None, years: int = 5, col_name: str = "timestamp") -> pd.DataFrame:
+def year_range(df: pd.DataFrame, start_date=None, years: int = 5, col_name: str = "timestamp") -> pd.Series:
     if not start_date:
         start_date = df.head(1).iloc[0][col_name]
 
@@ -641,16 +643,17 @@ def delta(df: pd.DataFrame, interval: int = 1, col_name: str = "close") -> pd.Se
     return df[col_name].diff(periods=interval)
 
 
-def delta_percent(df: pd.DataFrame, interval: int = 1, col_name: str = "close") -> pd.DataFrame:
+def delta_percent(df: pd.DataFrame, interval: int = 1, col_name: str = "close", forward_fill: bool = True) -> pd.Series:
     """
     labels data based on price rise on next day
       next_day - prev_day
     ((s - s.shift()) > 0).astype(np.int)
     """
-    return df[col_name].pct_change(periods=interval)
+    return df[col_name].ffill().pct_change(periods=interval) \
+        if forward_fill else df[col_name].pct_change(periods=interval)
 
 
-def get_buy_sell(df: pd.DataFrame,
+def get_buy_sell(df: pd.Series,
                  threshold: float = 0,
                  buy_positive: bool = True,
                  non_threshold: str = "HOLD") -> pd.Series:
@@ -665,7 +668,7 @@ def get_buy_sell(df: pd.DataFrame,
     return df.apply(get_result)
 
 
-def get_up_down(df: pd.DataFrame, up=1, no_change=0, down=0) -> pd.DataFrame:
+def get_up_down(df: pd.Series, up=1, no_change=0, down=0) -> pd.Series:
     def get_result(x):
         if x > 0:
             return up
@@ -677,11 +680,11 @@ def get_up_down(df: pd.DataFrame, up=1, no_change=0, down=0) -> pd.DataFrame:
     return df.apply(get_result)
 
 
-def as_buy_sell(df: pd.DataFrame, col_name="label", buy_positive=True):
+def as_buy_sell(df: pd.DataFrame, col_name="label", buy_positive=True) -> None:
     df[col_name] = get_buy_sell(df[col_name], buy_positive=buy_positive)
 
 
-def log_change(df: pd.DataFrame, interval: int, col_name: str = "close") -> pd.Series:
+def log_change(df: pd.DataFrame, interval: int, col_name: str = "close") -> ndarray[tuple[Any, ...], dtype[Any]]:
     return np.log(df[col_name] / df[col_name].shift(interval))
 
 
@@ -697,19 +700,6 @@ def ta_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 def technical_indicators(df: pd.DataFrame, intervals: Iterable[int], col_name: str = 'close') -> pd.DataFrame:
     df_ss = sdf.retype(df)
-
-    # res = rsi_smooth(df_ss, [intervals[0]], col_name=col_name)['rsi_' + str(intervals[0])]
-    # for interval in intervals:
-    #     start_time = time.time()
-    #     res = sma_old(df_ss, interval, col_name=col_name)
-    #     print("ss", time.time() - start_time)
-    #
-    #     start_time = time.time()
-    #     ta_res = sma(df, interval, col_name=col_name)
-    #     print("ta", time.time() - start_time)
-    #
-    #     print(interval, " eq", res.equals(ta_res), res.sum(), ta_res.sum(), res.mean(), ta_res.mean())
-    # exit()
 
     cols = {}
     cols.update(rsi_smooth(df, intervals, col_name))  # momentum --> slow
@@ -759,38 +749,73 @@ def graph(df: pd.DataFrame, name: str) -> None:
     layout.show()
 
 
+def compare_cerebro(df: pd.DataFrame,
+                    strategies: Dict[str, Callable | Tuple[Callable, Dict[str, Any]]] = None,
+                    from_date: datetime = None,
+                    to_date: datetime = None,
+                    initial_balance: float = 100000.0,
+                    commission: float = 0.0):
+    for strategy_name, strategy in strategies.items():
+        print("-"*20, f"Strategy : {strategy_name}", "-"*10)
+        run_cerebro(df,
+                    strategy[0] if type(strategy) is tuple else strategy,
+                    strategy[1] if type(strategy) is tuple and len(strategy) > 1 else None,
+                    from_date,
+                    to_date,
+                    initial_balance,
+                    commission)
+
+
 def run_cerebro(df: pd.DataFrame,
-                strategy: Callable,
+                strategy: Callable = None,
+                strategy_params: dict = None,
+                from_date: datetime = None,
+                to_date: datetime = None,
                 initial_balance: float = 100000.0,
                 commission: float = 0.0):
-    cerebro = bt.Cerebro()  # create a "Cerebro" engine instance
-    cerebro.addstrategy(strategy)
+    cerebro = bt.Cerebro()
+    cerebro.broker.set_coc(True)
 
-    # 2. Set the initial cash for the broker
-    initial_cash = 100000.0  # Set your desired starting capital here
+    cerebro.addstrategy(strategy) if strategy_params is None \
+        else cerebro.addstrategy(strategy, **strategy_params)
+
     cerebro.broker.setcash(initial_balance)
+    cerebro.addsizer(bt.sizers.AllInSizer)
     cerebro.broker.setcommission(commission=commission)
 
-    feed = bt.feeds.PandasData(
-        dataname=df
-        # ,
-        # datetime=0,
-        # open=1,
-        # high=2,
-        # low=3,
-        # close=4,
-        # volume=5
-    )
-    cerebro.adddata(feed)
+    # feed = bt.feeds.PandasData(
+    #     dataname=df,
+    #     datetime="timestamp"
+    #     # ,
+    #     # datetime=0,
+    #     # open=1,
+    #     # high=2,
+    #     # low=3,
+    #     # close=4,
+    #     # volume=5
+    # )
+    # cerebro.adddata(feed)
+    # Use the factory to create a custom data feed for this specific DataFrame
+    df = df.rename(columns={'timestamp': 'datetime'})
+
+    DynamicPandasData = create_dynamic_pandas_data(df)
+
+    # Add the data using the dynamically created class
+    data = DynamicPandasData(dataname=df)
+    cerebro.adddata(data)
 
     print(f'Starting Portfolio Value: {cerebro.broker.getvalue():.2f}')
     cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
     cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalysis')
+    cerebro.addanalyzer(CompletedOrdersCounter, _name='ordercounter')
     cerebro.addanalyzer(bt.analyzers.SQN, _name='sqn')
 
-    results = cerebro.run()
+    results = cerebro.run(
+        fromdate=from_date,
+        todate=to_date
+    )
     for index, result in enumerate(results):  # The list contains a single strategy instance in this case
         print(f'Result {index} ------ ')
         print(f'Final Portfolio Value: {cerebro.broker.getvalue():.2f}')
@@ -806,23 +831,81 @@ def run_cerebro(df: pd.DataFrame,
         print(f"Max Drawdown: {drawdown_analysis.max.drawdown:.2f}%")
 
         returns_analysis = result.analyzers.returns.get_analysis()
-        print(f"Total Return: {returns_analysis['rtot']:.2f}%")
+        print(f"Total Return: {returns_analysis['rtot'] * 100:.2f}%")
         print(f"Annualized Return: {returns_analysis['rnorm100']:.2f}%")
+
+        order_counts = result.analyzers.ordercounter.get_analysis()
+        print(f"Total Completed Orders: {order_counts['completed_orders']}")
 
         trade_analysis = result.analyzers.tradeanalysis.get_analysis()
         print("\nTrade Analyzer:")
         if 'total' in trade_analysis and 'total' in trade_analysis.total and trade_analysis.total.total > 0:
-            print(f"Total Trades: {trade_analysis.total.closed}")
-            print(f"Winning Trades: {trade_analysis.won.total}")
-            print(f"Losing Trades: {trade_analysis.lost.total}")
-            if 'pfactor' in trade_analysis:
-                print(f"Profit Factor: {trade_analysis.pfactor:.2f}")
+            print(f"Total: {trade_analysis.total.total}")
+            if 'trades' in trade_analysis.total:
+                print(f"Total Trades: {trade_analysis.total.trades}")
             else:
-                # This will happen if there were no losing trades
                 print("Profit Factor: N/A (No losing trades or not enough data)")
-        else:
-            print("No trades were closed during the backtest.")
+        if 'won' in trade_analysis:
+            print(f"Winning Trades: {trade_analysis.won.total}")
+            if 'longest' in trade_analysis.won:
+                print(f"Longest Winning Streak: {trade_analysis.won.longest.len}")
+        if 'lost' in trade_analysis:
+            print(f"Losing Trades: {trade_analysis.lost.total}")
+            if 'longest' in trade_analysis.lost:
+                print(f"Longest Losing Streak: {trade_analysis.lost.longes.len}")
+        if 'won' in trade_analysis and 'lost' in trade_analysis and 'total' in trade_analysis and 'trades' in trade_analysis.total:
+            print(f"Win Rate: {(trade_analysis.won.total / trade_analysis.total.trades * 100):.2f}%" if trade_analysis.total.trades > 0 else "N/A")
+        if 'pnl' in trade_analysis and 'average' in trade_analysis.pnl:
+            print(f"Avg P/L per trade: {trade_analysis.pnl.average:.2f}")
+
+        if 'pfactor' in trade_analysis:
+            print(f"Profit Factor: {trade_analysis.pfactor:.2f}")
+
+        # print("No trades were closed during the backtest.")
 
         # SQN
         sqn_analysis = result.analyzers.sqn.get_analysis()
         print(f"SQN (System Quality Number): {sqn_analysis.sqn:.2f}")
+
+
+def create_dynamic_pandas_data(dataframe: pd.DataFrame,
+                               standard_cols: list = ['open', 'high', 'low', 'close', 'volume']):
+    """
+    Dynamically creates a backtrader.feeds.PandasData class based on the columns
+    in a given pandas DataFrame.
+    """
+    # Get the list of custom columns
+    custom_cols = [col for col in dataframe.columns if col not in standard_cols]
+
+    # Create the 'lines' tuple for the new class
+    new_lines = tuple(custom_cols)
+
+    # Create the 'params' dictionary
+    # By default, use -1 to autodetect the columns by name.
+    new_params = {line: -1 for line in new_lines}
+
+    # Dynamically create the class
+    DynamicPandasData = type(
+        'DynamicPandasData',
+        (bt.feeds.PandasData,),
+        {
+            'lines': new_lines,
+            'params': new_params,
+            'columns': list(dataframe.columns)[1:],
+            '__init__': lambda self, *args, **kwargs: bt.feeds.PandasData.__init__(self, *args, **kwargs)
+        },
+    )
+
+    return DynamicPandasData
+
+
+class CompletedOrdersCounter(bt.Analyzer):
+    def start(self):
+        self.completed_orders_count = 0
+
+    def notify_order(self, order):
+        if order.status == bt.Order.Completed:
+            self.completed_orders_count += 1
+
+    def get_analysis(self):
+        return {'completed_orders': self.completed_orders_count}

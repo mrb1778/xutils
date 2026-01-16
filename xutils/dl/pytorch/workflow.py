@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Tuple, Union
 
 import pandas as pd
@@ -61,9 +62,9 @@ RESULTS_SUFFIX = ".results.json"
 
 
 class CheckpointMeta:
-    def __init__(self, checkpoint_path) -> None:
+    def __init__(self, checkpoint_path: str | Path) -> None:
         super().__init__()
-        self.checkpoint_path: str = checkpoint_path
+        self.checkpoint_path: str = checkpoint_path if isinstance(checkpoint_path, str) else str(checkpoint_path)
         self.metadata: Optional[Dict[str, Any]] = None
         self.performance: Optional[Dict[str, Any]] = None
 
